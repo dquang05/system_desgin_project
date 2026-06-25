@@ -1,16 +1,41 @@
-# Ignore KiCad auto-generated backup folders
+# --- STM32 & CMake Projects ---
+# Build and binary folders
+build/
+Debug/
+Release/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+compile_commands.json
+
+# IDE specific files
+.settings/
+.cproject
+.project
+.pydevproject
+.metadata/
+*.launch
+
+# --- KiCad Projects ---
+# Auto-generated backup folders
 *-backups/
 
-# Ignore project local settings (UI preferences, active layer, etc.)
+# Local settings (UI preferences, active layer, etc.)
 *.kicad_prl
 
-# Ignore footprint cache file
+# Footprint cache file
 fp-info-cache
 
-# Ignore legacy and standard temporary/backup files
+# Legacy and standard temporary/backup files
 *.bak
 *.bck
 *.tmp
 _autosave-*
 *.kicad_sch-bak
 *.kicad_pcb-bak
+
+# --- System Files ---
+.DS_Store
+Thumbs.db
