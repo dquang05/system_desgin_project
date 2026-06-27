@@ -1,0 +1,13 @@
+CompileFlags:
+  CompilationDatabase: .pio/build/upesy_wroom/
+  
+  # Yêu cầu Clangd gỡ bỏ các cờ đặc thù của ESP-IDF GCC
+  Remove: 
+    - -mlongcalls
+    - -fno-shrink-wrap
+    - -fstrict-volatile-bitfields
+    - -fno-tree-switch-conversion
+    
+  # (Tùy chọn) Thêm cờ này để Clangd không báo lỗi các function đặc thù của GCC
+  Add:
+    - -Wno-unknown-attributes

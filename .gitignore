@@ -1,13 +1,13 @@
-# --- STM32 & CMake Projects ---
-# Build and binary folders
+# --- ESP32 & PlatformIO Projects ---
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# ESP-IDF specific files
+sdkconfig.old
+dependencies.lock
 build/
-Debug/
-Release/
-CMakeFiles/
-CMakeCache.txt
-cmake_install.cmake
-Makefile
-*.cmake
 compile_commands.json
 
 # IDE specific files
