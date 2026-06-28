@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Log Monitor</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title-group">
+                <h1>ESP32 Realtime Logs</h1>
+                <p class="subtitle">UDP Port 8080</p>
+            </div>
+            <div class="status-indicator">
+                <div id="status-dot" class="dot red"></div>
+                <span id="status-text">Disconnected</span>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button id="btn-connect" class="btn primary">Connect</button>
+            <button id="btn-disconnect" class="btn danger">Disconnect</button>
+            <button id="btn-clear" class="btn secondary">Clear Log</button>
+            
+            <label class="toggle">
+                <input type="checkbox" id="toggle-autoscroll" checked>
+                <span>Auto-scroll</span>
+            </label>
+        </div>
+
+        <div class="log-container" id="log-container">
+            <ul id="log-list"></ul>
+        </div>
+    </div>
+    
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

@@ -39,3 +39,16 @@ _autosave-*
 # --- System Files ---
 .DS_Store
 Thumbs.db
+
+# --- UI Server (Node.js) ---
+UI/server/node_modules/
+UI/server/*.log
+UI/server/npm-debug.log*
+UI/server/yarn-debug.log*
+UI/server/yarn-error.log*
+UI/server/pnpm-debug.log*
+UI/server/logs/
+UI/server/.env
+
+# --- UI Workspace Agent Inputs ---
+UI/hardware_code/

@@ -92,7 +92,7 @@ void test_motor_forward_backward_and_encoder_read() {
 }
 
 // Bắt buộc trong PlatformIO khi chạy test
-extern "C" void app_main() {
+extern "C" void app_main_motor() {
   // Delay xíu để mở Serial Monitor k kịp vẫn đọc được log
   vTaskDelay(pdMS_TO_TICKS(2000));
 
