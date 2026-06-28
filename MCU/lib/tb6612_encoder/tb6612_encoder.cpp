@@ -17,7 +17,7 @@ Tb6612Encoder::Tb6612Encoder() :
     _pcnt_unit(nullptr), _pcnt_chan_a(nullptr), _pcnt_chan_b(nullptr),
     _in1_gpio(-1), _in2_gpio(-1), _pwm_period_ticks(0), _encoder_ppr(0),
     _spinlock(portMUX_INITIALIZER_UNLOCKED), _accumulated_pulses(0),
-    _last_rpm_calc_pulses(0), _last_rpm_calc_time_us(0), _is_initialized(false) {
+    _is_initialized(false) {
 }
 
 Tb6612Encoder::~Tb6612Encoder() {
@@ -47,8 +47,6 @@ esp_err_t Tb6612Encoder::init(const tb6612_config_t& config) {
     _in2_gpio = config.in2_gpio;
     _encoder_ppr = config.encoder_ppr;
     _accumulated_pulses = 0;
-    _last_rpm_calc_pulses = 0;
-    _last_rpm_calc_time_us = esp_timer_get_time();
 
     // 1. Initialize GPIOs for direction control (IN1, IN2)
     gpio_config_t io_conf = {
@@ -165,7 +163,7 @@ esp_err_t Tb6612Encoder::set_duty_cycle(float duty_cycle_percent) {
     return ESP_OK;
 }
 
-esp_err_t Tb6612Encoder::set_speed_rpm(float rpm) {
+esp_err_t Tb6612Encoder::set_speed_rpm_openloop(float rpm) {
     if (!_is_initialized) return ESP_ERR_INVALID_STATE;
     
     // Open-loop linear mapping to duty cycle (Passive Library constraint)
@@ -196,31 +194,25 @@ esp_err_t Tb6612Encoder::get_pulse_count(int64_t& out_pulse_count) {
     return ESP_OK;
 }
 
-esp_err_t Tb6612Encoder::get_current_rpm(float& out_rpm) {
+esp_err_t Tb6612Encoder::get_current_rpm(int64_t current_pulses, int64_t last_pulses, int64_t delta_time_us, float& out_rpm) {
     if (!_is_initialized) return ESP_ERR_INVALID_STATE;
 
-    int64_t current_pulses = 0;
-    get_pulse_count(current_pulses);
-    int64_t current_time_us = esp_timer_get_time();
-    
-    portENTER_CRITICAL(&_spinlock);
-    int64_t d_pulses = current_pulses - _last_rpm_calc_pulses; // Signed calculation for reverse rotation
-    int64_t d_time_us = current_time_us - _last_rpm_calc_time_us;
-
-    if (d_time_us > 0) {
-        // Store state for next delta safely
-        _last_rpm_calc_pulses = current_pulses;
-        _last_rpm_calc_time_us = current_time_us;
-    }
-    portEXIT_CRITICAL(&_spinlock);
-
-    if (d_time_us <= 0) {
+    if (delta_time_us <= 0) {
         out_rpm = 0.0f;
         return ESP_OK;
     }
 
-    // Formula: rpm = (d_pulses / ppr) / (d_time_us / 60,000,000 us)
-    out_rpm = static_cast<float>(d_pulses * 60000000LL) / static_cast<float>(_encoder_ppr * d_time_us);
+    int64_t d_pulses = current_pulses - last_pulses; // Signed calculation for reverse rotation
+
+    // Formula: rpm = (d_pulses / ppr) / (delta_time_us / 60,000,000 us)
+    out_rpm = static_cast<float>(d_pulses * 60000000LL) / static_cast<float>(_encoder_ppr * delta_time_us);
 
     return ESP_OK;
 }
+
+// RISK REVIEW:
+// - Caller Responsibility: The caller must explicitly manage history (delta_time and delta_pulses) and 
+//   apply a suitable filter (e.g., Low-Pass Filter) to mitigate derivative noise (quantization noise) 
+//   at high sampling frequencies.
+// - Division by Zero Safety: If delta_time_us is passed as 0 or negative, get_current_rpm safely 
+//   returns 0.0f RPM to prevent runtime exceptions.

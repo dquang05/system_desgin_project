@@ -28,9 +28,25 @@ public:
 
     esp_err_t init(const tb6612_config_t& config);
     esp_err_t set_duty_cycle(float duty_cycle_percent);
-    esp_err_t set_speed_rpm(float rpm);
+    esp_err_t set_speed_rpm_openloop(float rpm);
     esp_err_t get_pulse_count(int64_t& out_pulse_count);
-    esp_err_t get_current_rpm(float& out_rpm);
+
+    /**
+     * @brief Calculate current RPM based on pulse and time deltas.
+     * 
+     * @note Quantization Noise Warning: At high sampling frequencies (very small delta_time_us), 
+     * the number of delta_pulses captured will be very small and quantized. This causes a 
+     * "staircase" effect (quantization noise) on the calculated RPM. 
+     * It is the responsibility of the caller (e.g., PID module at a higher layer) to apply 
+     * a Low-Pass Filter to smooth out this noise.
+     * 
+     * @param current_pulses Current pulse count
+     * @param last_pulses Pulse count from the previous sampling period
+     * @param delta_time_us Time elapsed between samples in microseconds
+     * @param out_rpm Reference to store the calculated RPM
+     * @return esp_err_t ESP_OK on success
+     */
+    esp_err_t get_current_rpm(int64_t current_pulses, int64_t last_pulses, int64_t delta_time_us, float& out_rpm);
 
 private:
     mcpwm_timer_handle_t _timer;
@@ -49,9 +65,6 @@ private:
     
     portMUX_TYPE _spinlock;
     int64_t _accumulated_pulses;
-    
-    int64_t _last_rpm_calc_pulses;
-    int64_t _last_rpm_calc_time_us;
     
     bool _is_initialized;
 

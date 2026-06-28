@@ -1,5 +1,6 @@
 {
     "clangd.arguments": [
-        "--query-driver=C:/Users/PC/.platformio/packages/**/bin/*gcc*"
+        "--query-driver=**/.platformio/packages/toolchain-xtensa-esp32*/bin/xtensa-esp32-elf-*",
+        "--background-index"
     ]
 }
