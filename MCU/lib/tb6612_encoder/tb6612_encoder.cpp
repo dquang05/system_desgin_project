@@ -2,6 +2,8 @@
 #include "esp_timer.h"
 #include "esp_log.h"
 
+#define CHECK_RET(x) do { esp_err_t _err = (x); if (_err != ESP_OK) return _err; } while(0)
+
 static const char __attribute__((unused)) *TAG = "TB6612_ENC";
 
 bool Tb6612Encoder::_pcnt_on_reach_cb(pcnt_unit_handle_t unit, const pcnt_watch_event_data_t *edata, void *user_ctx) {
@@ -56,9 +58,9 @@ esp_err_t Tb6612Encoder::init(const tb6612_config_t& config) {
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
-    ESP_ERROR_CHECK(gpio_config(&io_conf));
-    ESP_ERROR_CHECK(gpio_set_level(static_cast<gpio_num_t>(config.in1_gpio), 0));
-    ESP_ERROR_CHECK(gpio_set_level(static_cast<gpio_num_t>(config.in2_gpio), 0));
+    CHECK_RET(gpio_config(&io_conf));
+    CHECK_RET(gpio_set_level(static_cast<gpio_num_t>(config.in1_gpio), 0));
+    CHECK_RET(gpio_set_level(static_cast<gpio_num_t>(config.in2_gpio), 0));
 
     // 2. Initialize MCPWM v5 for PWM generation
     _pwm_period_ticks = 1000000 / config.pwm_freq_hz; // 1MHz resolution baseline
@@ -68,67 +70,67 @@ esp_err_t Tb6612Encoder::init(const tb6612_config_t& config) {
     timer_config.resolution_hz = 1000000;
     timer_config.count_mode = MCPWM_TIMER_COUNT_MODE_UP;
     timer_config.period_ticks = _pwm_period_ticks;
-    ESP_ERROR_CHECK(mcpwm_new_timer(&timer_config, &_timer));
+    CHECK_RET(mcpwm_new_timer(&timer_config, &_timer));
 
     mcpwm_operator_config_t oper_config = {};
     oper_config.group_id = 0;
-    ESP_ERROR_CHECK(mcpwm_new_operator(&oper_config, &_oper));
-    ESP_ERROR_CHECK(mcpwm_operator_connect_timer(_oper, _timer));
+    CHECK_RET(mcpwm_new_operator(&oper_config, &_oper));
+    CHECK_RET(mcpwm_operator_connect_timer(_oper, _timer));
 
     mcpwm_comparator_config_t cmpr_config = {};
     cmpr_config.flags.update_cmp_on_tez = true;
-    ESP_ERROR_CHECK(mcpwm_new_comparator(_oper, &cmpr_config, &_cmpr));
+    CHECK_RET(mcpwm_new_comparator(_oper, &cmpr_config, &_cmpr));
 
     mcpwm_generator_config_t gen_config = {};
     gen_config.gen_gpio_num = config.pwm_gpio;
-    ESP_ERROR_CHECK(mcpwm_new_generator(_oper, &gen_config, &_gen));
+    CHECK_RET(mcpwm_new_generator(_oper, &gen_config, &_gen));
 
-    ESP_ERROR_CHECK(mcpwm_generator_set_action_on_timer_event(_gen,
+    CHECK_RET(mcpwm_generator_set_action_on_timer_event(_gen,
                     MCPWM_GEN_TIMER_EVENT_ACTION(MCPWM_TIMER_DIRECTION_UP, MCPWM_TIMER_EVENT_EMPTY, MCPWM_GEN_ACTION_HIGH)));
-    ESP_ERROR_CHECK(mcpwm_generator_set_action_on_compare_event(_gen,
+    CHECK_RET(mcpwm_generator_set_action_on_compare_event(_gen,
                     MCPWM_GEN_COMPARE_EVENT_ACTION(MCPWM_TIMER_DIRECTION_UP, _cmpr, MCPWM_GEN_ACTION_LOW)));
 
-    ESP_ERROR_CHECK(mcpwm_timer_enable(_timer));
-    ESP_ERROR_CHECK(mcpwm_timer_start_stop(_timer, MCPWM_TIMER_START_NO_STOP));
+    CHECK_RET(mcpwm_timer_enable(_timer));
+    CHECK_RET(mcpwm_timer_start_stop(_timer, MCPWM_TIMER_START_NO_STOP));
 
     // 3. Initialize PCNT v5 for Quadrature Encoder
     pcnt_unit_config_t unit_config = {};
     unit_config.low_limit = config.pcnt_low_limit;
     unit_config.high_limit = config.pcnt_high_limit;
-    ESP_ERROR_CHECK(pcnt_new_unit(&unit_config, &_pcnt_unit));
+    CHECK_RET(pcnt_new_unit(&unit_config, &_pcnt_unit));
 
     pcnt_glitch_filter_config_t filter_config = {};
     filter_config.max_glitch_ns = 1000;
-    ESP_ERROR_CHECK(pcnt_unit_set_glitch_filter(_pcnt_unit, &filter_config));
+    CHECK_RET(pcnt_unit_set_glitch_filter(_pcnt_unit, &filter_config));
 
     // Channel A configuration
     pcnt_chan_config_t chan_a_config = {};
     chan_a_config.edge_gpio_num = config.enc_a_gpio;
     chan_a_config.level_gpio_num = config.enc_b_gpio;
-    ESP_ERROR_CHECK(pcnt_new_channel(_pcnt_unit, &chan_a_config, &_pcnt_chan_a));
-    ESP_ERROR_CHECK(pcnt_channel_set_edge_action(_pcnt_chan_a, PCNT_CHANNEL_EDGE_ACTION_DECREASE, PCNT_CHANNEL_EDGE_ACTION_INCREASE));
-    ESP_ERROR_CHECK(pcnt_channel_set_level_action(_pcnt_chan_a, PCNT_CHANNEL_LEVEL_ACTION_KEEP, PCNT_CHANNEL_LEVEL_ACTION_INVERSE));
+    CHECK_RET(pcnt_new_channel(_pcnt_unit, &chan_a_config, &_pcnt_chan_a));
+    CHECK_RET(pcnt_channel_set_edge_action(_pcnt_chan_a, PCNT_CHANNEL_EDGE_ACTION_DECREASE, PCNT_CHANNEL_EDGE_ACTION_INCREASE));
+    CHECK_RET(pcnt_channel_set_level_action(_pcnt_chan_a, PCNT_CHANNEL_LEVEL_ACTION_KEEP, PCNT_CHANNEL_LEVEL_ACTION_INVERSE));
 
     // Channel B configuration
     pcnt_chan_config_t chan_b_config = {};
     chan_b_config.edge_gpio_num = config.enc_b_gpio;
     chan_b_config.level_gpio_num = config.enc_a_gpio;
-    ESP_ERROR_CHECK(pcnt_new_channel(_pcnt_unit, &chan_b_config, &_pcnt_chan_b));
-    ESP_ERROR_CHECK(pcnt_channel_set_edge_action(_pcnt_chan_b, PCNT_CHANNEL_EDGE_ACTION_INCREASE, PCNT_CHANNEL_EDGE_ACTION_DECREASE));
-    ESP_ERROR_CHECK(pcnt_channel_set_level_action(_pcnt_chan_b, PCNT_CHANNEL_LEVEL_ACTION_KEEP, PCNT_CHANNEL_LEVEL_ACTION_INVERSE));
+    CHECK_RET(pcnt_new_channel(_pcnt_unit, &chan_b_config, &_pcnt_chan_b));
+    CHECK_RET(pcnt_channel_set_edge_action(_pcnt_chan_b, PCNT_CHANNEL_EDGE_ACTION_INCREASE, PCNT_CHANNEL_EDGE_ACTION_DECREASE));
+    CHECK_RET(pcnt_channel_set_level_action(_pcnt_chan_b, PCNT_CHANNEL_LEVEL_ACTION_KEEP, PCNT_CHANNEL_LEVEL_ACTION_INVERSE));
 
     // Register watchpoints and callbacks
-    ESP_ERROR_CHECK(pcnt_unit_add_watch_point(_pcnt_unit, config.pcnt_high_limit));
-    ESP_ERROR_CHECK(pcnt_unit_add_watch_point(_pcnt_unit, config.pcnt_low_limit));
+    CHECK_RET(pcnt_unit_add_watch_point(_pcnt_unit, config.pcnt_high_limit));
+    CHECK_RET(pcnt_unit_add_watch_point(_pcnt_unit, config.pcnt_low_limit));
 
     pcnt_event_callbacks_t cbs = {
         .on_reach = _pcnt_on_reach_cb,
     };
-    ESP_ERROR_CHECK(pcnt_unit_register_event_callbacks(_pcnt_unit, &cbs, this));
+    CHECK_RET(pcnt_unit_register_event_callbacks(_pcnt_unit, &cbs, this));
 
-    ESP_ERROR_CHECK(pcnt_unit_enable(_pcnt_unit));
-    ESP_ERROR_CHECK(pcnt_unit_clear_count(_pcnt_unit));
-    ESP_ERROR_CHECK(pcnt_unit_start(_pcnt_unit));
+    CHECK_RET(pcnt_unit_enable(_pcnt_unit));
+    CHECK_RET(pcnt_unit_clear_count(_pcnt_unit));
+    CHECK_RET(pcnt_unit_start(_pcnt_unit));
 
     _is_initialized = true;
     return ESP_OK;
@@ -158,7 +160,7 @@ esp_err_t Tb6612Encoder::set_duty_cycle(float duty_cycle_percent) {
 
     // Calculate comparator ticks dynamically
     uint32_t compare_ticks = static_cast<uint32_t>((abs_duty / 100.0f) * _pwm_period_ticks);
-    ESP_ERROR_CHECK(mcpwm_comparator_set_compare_value(_cmpr, compare_ticks));
+    CHECK_RET(mcpwm_comparator_set_compare_value(_cmpr, compare_ticks));
 
     return ESP_OK;
 }
@@ -183,7 +185,7 @@ esp_err_t Tb6612Encoder::get_pulse_count(int64_t& out_pulse_count) {
         accum1 = _accumulated_pulses;
         portEXIT_CRITICAL(&_spinlock);
         
-        ESP_ERROR_CHECK(pcnt_unit_get_count(_pcnt_unit, &current_count));
+        CHECK_RET(pcnt_unit_get_count(_pcnt_unit, &current_count));
         
         portENTER_CRITICAL(&_spinlock);
         accum2 = _accumulated_pulses;

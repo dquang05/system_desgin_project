@@ -33,20 +33,35 @@ socket.on('status', (state) => {
 });
 
 // Lắng nghe log mới đẩy xuống từ Backend (Tách biệt luồng UI)
-socket.on('log', (logEntry) => {
-    const li = document.createElement('li');
-    li.innerHTML = `
-        <div class="log-meta">
-            <span class="timestamp">${logEntry.timestamp}</span> 
-            <span class="source">[${logEntry.from}]</span>
-        </div>
-        <div class="log-content">${formatLogData(logEntry.data)}</div>
-    `;
-    logList.appendChild(li);
-    logCount++;
+let logBatch = [];
+let isRendering = false;
+
+function renderLogs() {
+    if (logBatch.length === 0) {
+        isRendering = false;
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    const logsToAdd = logBatch.splice(0, logBatch.length);
+
+    logsToAdd.forEach(logEntry => {
+        const li = document.createElement('li');
+        li.innerHTML = `
+            <div class="log-meta">
+                <span class="timestamp">${logEntry.timestamp}</span> 
+                <span class="source">[${logEntry.from}]</span>
+            </div>
+            <div class="log-content">${formatLogData(logEntry.data)}</div>
+        `;
+        fragment.appendChild(li);
+        logCount++;
+    });
+
+    logList.appendChild(fragment);
 
     // Cơ chế FIFO để tránh treo trình duyệt
-    if (logCount > MAX_LOGS) {
+    while (logCount > MAX_LOGS && logList.firstChild) {
         logList.removeChild(logList.firstChild);
         logCount--;
     }
@@ -54,6 +69,17 @@ socket.on('log', (logEntry) => {
     // Auto scroll logic
     if (toggleAutoscroll.checked) {
         logContainer.scrollTop = logContainer.scrollHeight;
+    }
+
+    // Tiếp tục render nếu có batch mới
+    requestAnimationFrame(renderLogs);
+}
+
+socket.on('log', (logEntry) => {
+    logBatch.push(logEntry);
+    if (!isRendering) {
+        isRendering = true;
+        requestAnimationFrame(renderLogs);
     }
 });
 

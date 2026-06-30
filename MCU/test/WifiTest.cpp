@@ -12,7 +12,7 @@ static const char *TAG = "WIFI_TEST";
 // GPIO 25 có thể kích hoạt điện trở kéo xuống (pull-down) an toàn
 #define WIFI_CONTROL_GPIO GPIO_NUM_25
 
-extern "C" void app_main() {
+extern "C" void app_main_wifi() {
   ESP_LOGI(TAG, "Starting Wi-Fi Manager Test...");
 
   // 1. Khởi tạo Wi-Fi

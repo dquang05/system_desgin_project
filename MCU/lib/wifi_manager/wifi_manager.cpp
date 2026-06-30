@@ -10,6 +10,8 @@
 #include "nvs_flash.h"
 #include <cstring>
 
+#define CHECK_RET(x) do { esp_err_t _err = (x); if (_err != ESP_OK) return _err; } while(0)
+
 namespace wifi_manager {
 
 static const char *TAG = "WIFI_MANAGER";
@@ -60,10 +62,10 @@ void WifiManager::wifi_event_handler(void *arg, esp_event_base_t event_base,
   }
 }
 
-void WifiManager::init(const WifiConfig &config) {
+esp_err_t WifiManager::init(const WifiConfig &config) {
   if (_initialized) {
     ESP_LOGW(TAG, "Wi-Fi already initialized.");
-    return;
+    return ESP_OK;
   }
 
   _config = config;
@@ -72,13 +74,13 @@ void WifiManager::init(const WifiConfig &config) {
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
         ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-      ESP_ERROR_CHECK(nvs_flash_erase());
+      CHECK_RET(nvs_flash_erase());
       ret = nvs_flash_init();
     }
-    ESP_ERROR_CHECK(ret);
+    CHECK_RET(ret);
 
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    CHECK_RET(esp_netif_init());
+    CHECK_RET(esp_event_loop_create_default());
     sys_initialized = true;
   }
 
@@ -89,12 +91,12 @@ void WifiManager::init(const WifiConfig &config) {
   }
 
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-  ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+  CHECK_RET(esp_wifi_init(&cfg));
 
-  ESP_ERROR_CHECK(esp_event_handler_instance_register(
+  CHECK_RET(esp_event_handler_instance_register(
       WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, this,
       &_instance_any_id));
-  ESP_ERROR_CHECK(esp_event_handler_instance_register(
+  CHECK_RET(esp_event_handler_instance_register(
       IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, this,
       &_instance_got_ip));
 
@@ -104,8 +106,8 @@ void WifiManager::init(const WifiConfig &config) {
     std::strncpy(reinterpret_cast<char*>(wifi_cfg.sta.password), _config.password, sizeof(wifi_cfg.sta.password));
     wifi_cfg.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
+    CHECK_RET(esp_wifi_set_mode(WIFI_MODE_STA));
+    CHECK_RET(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
   } else {
     std::strncpy(reinterpret_cast<char*>(wifi_cfg.ap.ssid), _config.ssid, sizeof(wifi_cfg.ap.ssid));
     std::strncpy(reinterpret_cast<char*>(wifi_cfg.ap.password), _config.password, sizeof(wifi_cfg.ap.password));
@@ -116,17 +118,18 @@ void WifiManager::init(const WifiConfig &config) {
       wifi_cfg.ap.authmode = WIFI_AUTH_OPEN;
     }
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_cfg));
+    CHECK_RET(esp_wifi_set_mode(WIFI_MODE_AP));
+    CHECK_RET(esp_wifi_set_config(WIFI_IF_AP, &wifi_cfg));
   }
 
-  ESP_ERROR_CHECK(esp_wifi_start());
+  CHECK_RET(esp_wifi_start());
   _initialized = true;
   ESP_LOGI(TAG, "Wi-Fi initialization finished.");
+  return ESP_OK;
 }
 
-void WifiManager::deinit() {
-  if (!_initialized) return;
+esp_err_t WifiManager::deinit() {
+  if (!_initialized) return ESP_OK;
 
   esp_wifi_stop();
   
@@ -142,6 +145,7 @@ void WifiManager::deinit() {
 
   _initialized = false;
   ESP_LOGI(TAG, "Wi-Fi deinitialized.");
+  return ESP_OK;
 }
 
 void WifiManager::start() {

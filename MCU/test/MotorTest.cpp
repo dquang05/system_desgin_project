@@ -26,6 +26,7 @@
 
 #include "../lib/tb6612_encoder/tb6612_encoder.hpp"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <unity.h>
@@ -54,17 +55,27 @@ void test_motor_forward_backward_and_encoder_read() {
   ESP_LOGI(TAG, "Motor initialized. Running FORWARD at 50%% duty cycle...");
   motor.set_duty_cycle(50.0f);
 
+  int64_t fwd_last_pulses = 0;
+  int64_t fwd_last_time = esp_timer_get_time();
+  motor.get_pulse_count(fwd_last_pulses);
+
   // Read values for 3 seconds
   for (int i = 0; i < 30; i++) {
-    int64_t pulse_count = 0;
-    float current_rpm = 0.0f;
-
-    motor.get_pulse_count(pulse_count);
-    motor.get_current_rpm(current_rpm);
-
-    ESP_LOGI(TAG, "[FWD | Duty: 50%%] Pulses: %lld | RPM: %.2f", pulse_count,
-             current_rpm);
     vTaskDelay(pdMS_TO_TICKS(100)); // 10Hz polling
+
+    int64_t current_pulses = 0;
+    float current_rpm = 0.0f;
+    int64_t current_time = esp_timer_get_time();
+
+    motor.get_pulse_count(current_pulses);
+    motor.get_current_rpm(current_pulses, fwd_last_pulses,
+                          current_time - fwd_last_time, current_rpm);
+
+    ESP_LOGI(TAG, "[FWD | Duty: 50%%] Pulses: %lld | RPM: %.2f", current_pulses,
+             current_rpm);
+
+    fwd_last_pulses = current_pulses;
+    fwd_last_time = current_time;
   }
 
   ESP_LOGI(TAG, "Stopping motor...");
@@ -74,17 +85,27 @@ void test_motor_forward_backward_and_encoder_read() {
   ESP_LOGI(TAG, "Running BACKWARD at -30%% duty cycle...");
   motor.set_duty_cycle(-30.0f);
 
+  int64_t bwd_last_pulses = 0;
+  int64_t bwd_last_time = esp_timer_get_time();
+  motor.get_pulse_count(bwd_last_pulses);
+
   // Read values for 3 seconds
   for (int i = 0; i < 30; i++) {
-    int64_t pulse_count = 0;
-    float current_rpm = 0.0f;
-
-    motor.get_pulse_count(pulse_count);
-    motor.get_current_rpm(current_rpm);
-
-    ESP_LOGI(TAG, "[BWD | Duty: -30%%] Pulses: %lld | RPM: %.2f", pulse_count,
-             current_rpm);
     vTaskDelay(pdMS_TO_TICKS(100)); // 10Hz polling
+
+    int64_t current_pulses = 0;
+    float current_rpm = 0.0f;
+    int64_t current_time = esp_timer_get_time();
+
+    motor.get_pulse_count(current_pulses);
+    motor.get_current_rpm(current_pulses, bwd_last_pulses,
+                          current_time - bwd_last_time, current_rpm);
+
+    ESP_LOGI(TAG, "[BWD | Duty: -30%%] Pulses: %lld | RPM: %.2f",
+             current_pulses, current_rpm);
+
+    bwd_last_pulses = current_pulses;
+    bwd_last_time = current_time;
   }
 
   ESP_LOGI(TAG, "Stopping and de-initializing motor...");
@@ -92,7 +113,7 @@ void test_motor_forward_backward_and_encoder_read() {
 }
 
 // Bắt buộc trong PlatformIO khi chạy test
-extern "C" void app_main_motor() {
+extern "C" void app_main() {
   // Delay xíu để mở Serial Monitor k kịp vẫn đọc được log
   vTaskDelay(pdMS_TO_TICKS(2000));
 

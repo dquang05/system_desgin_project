@@ -43,10 +43,10 @@ public:
   ~WifiManager();
 
   // Initialize Wi-Fi driver and connect/start AP
-  void init(const WifiConfig &config = WifiConfig());
+  esp_err_t init(const WifiConfig &config = WifiConfig());
 
   // Deinitialize Wi-Fi to free resources
-  void deinit();
+  esp_err_t deinit();
 
   // Start Wi-Fi (if previously stopped)
   void start();

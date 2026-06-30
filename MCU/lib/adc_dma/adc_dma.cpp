@@ -3,6 +3,8 @@
 #include <esp_attr.h>
 #include <esp_log.h>
 
+#define CHECK_RET(x) do { esp_err_t _err = (x); if (_err != ESP_OK) return _err; } while(0)
+
 static const char *TAG = "AdcDmaDriver";
 
 EspAdcDmaDriver::EspAdcDmaDriver()
@@ -56,7 +58,7 @@ esp_err_t EspAdcDmaDriver::init(const adc_dma_config_t &config) {
     adc_continuous_handle_cfg_t handle_cfg = {};
     handle_cfg.max_store_buf_size = _config.dma_frame_size * 4;
     handle_cfg.conv_frame_size = _config.dma_frame_size;
-    ESP_ERROR_CHECK(adc_continuous_new_handle(&handle_cfg, &_handle));
+    CHECK_RET(adc_continuous_new_handle(&handle_cfg, &_handle));
 
     adc_continuous_config_t adc_cfg = {};
     adc_cfg.sample_freq_hz = _config.sample_freq_hz;
@@ -74,11 +76,11 @@ esp_err_t EspAdcDmaDriver::init(const adc_dma_config_t &config) {
     adc_cfg.pattern_num = NUM_SENSORS;
     adc_cfg.adc_pattern = adc_pattern;
 
-    ESP_ERROR_CHECK(adc_continuous_config(_handle, &adc_cfg));
+    CHECK_RET(adc_continuous_config(_handle, &adc_cfg));
 
     adc_continuous_evt_cbs_t cbs = {};
     cbs.on_pool_ovf = _on_pool_ovf;
-    ESP_ERROR_CHECK(adc_continuous_register_event_callbacks(_handle, &cbs, this));
+    CHECK_RET(adc_continuous_register_event_callbacks(_handle, &cbs, this));
 
     _is_initialized = true;
     return ESP_OK;
@@ -93,7 +95,7 @@ bool IRAM_ATTR EspAdcDmaDriver::_on_pool_ovf(
 esp_err_t EspAdcDmaDriver::start() {
     if (!_is_initialized || _is_running) return ESP_ERR_INVALID_STATE;
 
-    ESP_ERROR_CHECK(adc_continuous_start(_handle));
+    CHECK_RET(adc_continuous_start(_handle));
 
     _is_running = true;
     return ESP_OK;
@@ -103,7 +105,7 @@ esp_err_t EspAdcDmaDriver::stop() {
     if (!_is_running) return ESP_ERR_INVALID_STATE;
 
     _is_running = false;
-    ESP_ERROR_CHECK(adc_continuous_stop(_handle));
+    CHECK_RET(adc_continuous_stop(_handle));
     return ESP_OK;
 }
 

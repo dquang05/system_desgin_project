@@ -41,10 +41,18 @@ extern "C" void app_main_adc() {
   config.sample_freq_hz = 20000;
   config.dma_frame_size = 256;
 
-  ESP_ERROR_CHECK(adc_driver.init(config));
+  esp_err_t err = adc_driver.init(config);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "ADC Init failed");
+    return;
+  }
   ESP_LOGI(TAG, "ADC Initialized");
 
-  ESP_ERROR_CHECK(adc_driver.start());
+  err = adc_driver.start();
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "ADC Start failed");
+    return;
+  }
   ESP_LOGI(TAG, "ADC Started");
 
   xTaskCreatePinnedToCore(adc_worker_task, "adc_worker", 4096, nullptr, 5,
