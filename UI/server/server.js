@@ -9,7 +9,7 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 // Cấu hình cổng mạng dựa trên hardware_analyzer
-const UDP_PORT = process.env.UDP_PORT || 8080;
+const UDP_PORT = process.env.UDP_PORT || 54321;
 const HTTP_PORT = process.env.PORT || 3000;
 
 let udp_socket = null;
@@ -64,6 +64,7 @@ function start_udp_server() {
 
         // Backend event loop: Xử lý I/O mạng phi đồng bộ
         udp_socket.on('message', (msg, rinfo) => {
+            console.log(`Received UDP packet from ${rinfo.address}:${rinfo.port}`);
             try {
                 // Parse log, gửi realtime tới UI qua WebSockets
                 const logData = msg.toString('utf8');

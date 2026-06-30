@@ -17,7 +17,9 @@ namespace wifi_manager {
 static const char *TAG = "WIFI_MANAGER";
 static bool sys_initialized = false;
 
-WifiManager::WifiManager() : _retry_count(0), _netif(nullptr), _initialized(false) {
+WifiManager::WifiManager()
+    : _retry_count(0), _netif(nullptr), _initialized(false),
+      _is_intentional_stop(false), _udp_sock(-1) {
   _wifi_event_group = xEventGroupCreateStatic(&_event_group_buffer);
 }
 
@@ -30,10 +32,14 @@ void WifiManager::wifi_event_handler(void *arg, esp_event_base_t event_base,
   WifiManager *instance = static_cast<WifiManager *>(arg);
 
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+    instance->_is_intentional_stop = false;
     esp_wifi_connect();
   } else if (event_base == WIFI_EVENT &&
              event_id == WIFI_EVENT_STA_DISCONNECTED) {
-    if (instance->_retry_count < instance->_config.max_retry) {
+    if (instance->_is_intentional_stop) {
+      xEventGroupClearBits(instance->_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
+      ESP_LOGI(TAG, "Wi-Fi disconnected intentionally.");
+    } else if (instance->_retry_count < instance->_config.max_retry) {
       esp_wifi_connect();
       instance->_retry_count++;
       ESP_LOGI(TAG, "Retrying to connect to the AP...");
@@ -143,6 +149,11 @@ esp_err_t WifiManager::deinit() {
     _netif = nullptr;
   }
 
+  if (_udp_sock >= 0) {
+    close(_udp_sock);
+    _udp_sock = -1;
+  }
+
   _initialized = false;
   ESP_LOGI(TAG, "Wi-Fi deinitialized.");
   return ESP_OK;
@@ -150,6 +161,9 @@ esp_err_t WifiManager::deinit() {
 
 void WifiManager::start() {
   if (_initialized) {
+    _is_intentional_stop = false;
+    _retry_count = 0;
+    xEventGroupClearBits(_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
     esp_wifi_start();
     ESP_LOGI(TAG, "Wi-Fi started.");
   }
@@ -157,7 +171,14 @@ void WifiManager::start() {
 
 void WifiManager::stop() {
   if (_initialized) {
+    _is_intentional_stop = true;
     esp_wifi_stop();
+    
+    if (_udp_sock >= 0) {
+      close(_udp_sock);
+      _udp_sock = -1;
+    }
+    
     ESP_LOGI(TAG, "Wi-Fi stopped.");
   }
 }
@@ -191,10 +212,12 @@ bool WifiManager::send_log_data(const char *ip, uint16_t port,
     return false;
   }
 
-  int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
-  if (sock < 0) {
-    ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
-    return false;
+  if (_udp_sock < 0) {
+    _udp_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (_udp_sock < 0) {
+      ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
+      return false;
+    }
   }
 
   struct sockaddr_in dest_addr = {};
@@ -202,16 +225,17 @@ bool WifiManager::send_log_data(const char *ip, uint16_t port,
   dest_addr.sin_family = AF_INET;
   dest_addr.sin_port = htons(port);
 
-  int err = sendto(sock, data, len, 0,
+  int err = sendto(_udp_sock, data, len, 0,
                    reinterpret_cast<struct sockaddr *>(&dest_addr),
                    sizeof(dest_addr));
   if (err < 0) {
     ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
-    close(sock);
+    // Nếu lỗi gửi, có thể do mạng, ta tạm đóng socket để lần sau tạo lại
+    close(_udp_sock);
+    _udp_sock = -1;
     return false;
   }
 
-  close(sock);
   return true;
 }
 

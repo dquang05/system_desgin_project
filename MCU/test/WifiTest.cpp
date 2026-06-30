@@ -12,14 +12,14 @@ static const char *TAG = "WIFI_TEST";
 // GPIO 25 có thể kích hoạt điện trở kéo xuống (pull-down) an toàn
 #define WIFI_CONTROL_GPIO GPIO_NUM_25
 
-extern "C" void app_main_wifi() {
+extern "C" void app_main() {
   ESP_LOGI(TAG, "Starting Wi-Fi Manager Test...");
 
   // 1. Khởi tạo Wi-Fi
   static wifi_manager::WifiManager wifi;
   wifi_manager::WifiConfig config(wifi_manager::WifiMode::MODE_STA,
-                                  wifi_manager::DEFAULT_WIFI_SSID,
-                                  wifi_manager::DEFAULT_WIFI_PASSWORD);
+                                  "VIETTEL",
+                                  "0906608600");
   wifi.init(config);
 
   // Dừng Wi-Fi ngay từ đầu (mặc định), đợi tín hiệu từ GPIO
@@ -71,7 +71,7 @@ extern "C" void app_main_wifi() {
           // Demo gửi dữ liệu định kỳ
           const char *dummy_log = "{\"sensor\": \"temp\", \"value\": 25.4}";
           bool sent =
-              wifi.send_log_data("192.168.1.15", 8080,
+              wifi.send_log_data("192.168.1.14", 54321,
                                  reinterpret_cast<const uint8_t *>(dummy_log),
                                  std::strlen(dummy_log));
           if (sent) {

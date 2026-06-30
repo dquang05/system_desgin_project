@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <atomic>
 
 namespace wifi_manager {
 
@@ -78,6 +79,8 @@ private:
   esp_event_handler_instance_t _instance_got_ip;
 
   bool _initialized;
+  std::atomic<bool> _is_intentional_stop;
+  int _udp_sock;
 
   static constexpr uint32_t WIFI_CONNECTED_BIT = BIT0;
   static constexpr uint32_t WIFI_FAIL_BIT = BIT1;
