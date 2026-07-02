@@ -4,7 +4,7 @@
 FILE(GLOB_RECURSE app_sources ${CMAKE_SOURCE_DIR}/src/*.*)
 
 # To build the main app:
-idf_component_register(SRCS "main.cpp" "telemetry.cpp"
+idf_component_register(SRCS "main.cpp" "telemetry_task.cpp" "motion_task.cpp"
                     INCLUDE_DIRS "." "../include"
                     REQUIRES log esp_driver_gpio freertos)
 

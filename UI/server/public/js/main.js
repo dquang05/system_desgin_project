@@ -42,6 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
     socketMgr.onLogReceived((logEntry) => {
         logViewer.addLog(logEntry);
         chartMgr.processLog(logEntry);
+        motorMgr.processLog(logEntry);
     });
 
     // Setup Global Buttons

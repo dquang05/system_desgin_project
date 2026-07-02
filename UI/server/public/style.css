@@ -253,7 +253,87 @@ li:hover { background: rgba(255, 255, 255, 0.03); }
 .motor-container {
     flex: 1;
     background: var(--log-bg);
+    overflow-y: auto;
+    padding: 24px;
+}
+
+.motor-grid {
     display: flex;
+    gap: 24px;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.motor-card {
+    flex: 1;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.motor-card h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    font-size: 18px;
+    color: var(--accent);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 10px;
+}
+
+.motor-stat {
+    display: flex;
+    justify-content: space-between;
     align-items: center;
-    justify-content: center;
+    margin-bottom: 8px;
+}
+
+.motor-stat.mt-15 {
+    margin-top: 15px;
+}
+
+.stat-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.stat-value {
+    font-size: 16px;
+    font-weight: 600;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+.pwm-bar-container {
+    height: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    position: relative;
+    overflow: hidden;
+}
+
+.pwm-bar-center {
+    width: 2px;
+    height: 100%;
+    background: var(--text-secondary);
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2;
+}
+
+.pwm-bar {
+    position: absolute;
+    height: 100%;
+    top: 0;
+    transition: width 0.1s linear;
+}
+
+.pwm-bar.fill-left {
+    right: 50%;
+    background: var(--danger);
+}
+
+.pwm-bar.fill-right {
+    left: 50%;
+    background: var(--accent);
 }

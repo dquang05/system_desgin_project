@@ -104,6 +104,9 @@ esp_err_t Tb6612Encoder::init(const tb6612_config_t& config) {
     CHECK_RET(pcnt_unit_set_glitch_filter(_pcnt_unit, &filter_config));
 
     // Channel A configuration
+    gpio_set_pull_mode(static_cast<gpio_num_t>(config.enc_a_gpio), GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(static_cast<gpio_num_t>(config.enc_b_gpio), GPIO_PULLUP_ONLY);
+
     pcnt_chan_config_t chan_a_config = {};
     chan_a_config.edge_gpio_num = config.enc_a_gpio;
     chan_a_config.level_gpio_num = config.enc_b_gpio;

@@ -17,10 +17,9 @@ extern "C" void app_main() {
 
   // 1. Khởi tạo Wi-Fi
   static wifi_manager::WifiManager wifi;
-  wifi_manager::WifiConfig config(wifi_manager::WifiMode::MODE_STA,
-                                  "VIETTEL",
+  wifi_manager::WifiConfig config(wifi_manager::WifiMode::MODE_STA, "VIETTEL",
                                   "0906608600");
-  wifi.init(config);
+  // wifi.init(config);
 
   // Dừng Wi-Fi ngay từ đầu (mặc định), đợi tín hiệu từ GPIO
   wifi.stop();
@@ -42,49 +41,52 @@ extern "C" void app_main() {
   // 3. Vòng lặp chính kiểm tra tín hiệu
   bool last_state = false;
   uint32_t last_log_time = 0;
-
+  float x = 1.0f;
   while (true) {
-    int current_level = gpio_get_level(WIFI_CONTROL_GPIO);
-    bool current_state = (current_level == 1);
+    // int current_level = gpio_get_level(WIFI_CONTROL_GPIO);
+    // bool current_state = (current_level == 1);
 
-    if (current_state != last_state) {
-      last_state = current_state;
+    // if (current_state != last_state) {
+    //   last_state = current_state;
 
-      if (current_state) {
-        ESP_LOGI(TAG, "GPIO %d is HIGH -> BẬT Wi-Fi", WIFI_CONTROL_GPIO);
-        wifi.start();
-      } else {
-        ESP_LOGI(TAG, "GPIO %d is LOW -> TẮT Wi-Fi", WIFI_CONTROL_GPIO);
-        wifi.stop();
-      }
-    }
+    //   if (current_state) {
+    //     ESP_LOGI(TAG, "GPIO %d is HIGH -> BẬT Wi-Fi", WIFI_CONTROL_GPIO);
+    //     // wifi.start();
+    //   } else {
+    //     ESP_LOGI(TAG, "GPIO %d is LOW -> TẮT Wi-Fi", WIFI_CONTROL_GPIO);
+    //     wifi.stop();
+    //   }
+    // }
 
-    // Nếu Wi-Fi đang bật, kiểm tra kết nối và gửi log mỗi 2s
-    if (current_state) {
-      // Kiểm tra trạng thái bằng hàm không log (tránh spam CPU/UART)
-      if (wifi.is_connected()) {
-        uint32_t current_time = pdTICKS_TO_MS(xTaskGetTickCount());
-        // Kiểm tra xem đã qua 2000ms (2s) chưa
-        if (current_time - last_log_time >= 2000) {
-          last_log_time = current_time;
+    // // Nếu Wi-Fi đang bật, kiểm tra kết nối và gửi log mỗi 2s
+    // if (current_state) {
+    //   // Kiểm tra trạng thái bằng hàm không log (tránh spam CPU/UART)
+    //   if (wifi.is_connected()) {
+    //     uint32_t current_time = pdTICKS_TO_MS(xTaskGetTickCount());
+    //     // Kiểm tra xem đã qua 2000ms (2s) chưa
+    //     if (current_time - last_log_time >= 2000) {
+    //       last_log_time = current_time;
 
-          // Demo gửi dữ liệu định kỳ
-          const char *dummy_log = "{\"sensor\": \"temp\", \"value\": 25.4}";
-          bool sent =
-              wifi.send_log_data("192.168.1.14", 54321,
-                                 reinterpret_cast<const uint8_t *>(dummy_log),
-                                 std::strlen(dummy_log));
-          if (sent) {
-            ESP_LOGI(TAG, "Log data sent successfully.");
-          } else {
-            ESP_LOGE(TAG, "Failed to send log data.");
-          }
-        }
-      }
-    }
+    //       // Demo gửi dữ liệu định kỳ
+    //       const char *dummy_log = "{\"sensor\": \"temp\", \"value\": 25.4}";
+    //       bool sent =
+    //           wifi.send_log_data("192.168.1.14", 54321,
+    //                              reinterpret_cast<const uint8_t
+    //                              *>(dummy_log), std::strlen(dummy_log));
+    //       if (sent) {
+    //         ESP_LOGI(TAG, "Log data sent successfully.");
+    //       } else {
+    //         ESP_LOGE(TAG, "Failed to send log data.");
+    //       }
+    //     }
+    //   }
+    // }
 
-    // Trễ 100ms: Vừa tiết kiệm CPU, vừa dùng làm debouncer chống nhiễu phím
-    // cứng
+    // // Trễ 100ms: Vừa tiết kiệm CPU, vừa dùng làm debouncer chống nhiễu phím
+    // // cứng
+
+    x = x * 1.0001f;
+    ESP_LOGE(TAG, "Value of x: %f", x);
     vTaskDelay(pdMS_TO_TICKS(100));
   }
 }

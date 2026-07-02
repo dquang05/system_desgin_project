@@ -25,7 +25,6 @@ export class ChartManager {
                 responsive: true,
                 maintainAspectRatio: false,
                 animation: false, // Turn off animation for performance with high-frequency data
-                parsing: false, // Disable internal data parsing for performance
                 interaction: {
                     mode: 'nearest',
                     axis: 'x',

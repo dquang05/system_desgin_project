@@ -1,162 +1,146 @@
 #include "adc_dma.hpp"
 #include <cstring>
-#include <esp_attr.h>
-#include <esp_log.h>
 
-#define CHECK_RET(x) do { esp_err_t _err = (x); if (_err != ESP_OK) return _err; } while(0)
-
-static const char *TAG = "AdcDmaDriver";
-
-EspAdcDmaDriver::EspAdcDmaDriver()
-    : _handle(nullptr), _is_initialized(false), _is_running(false), _latest_data{} {
-    for (int i = 0; i < NUM_SENSORS; i++) {
-        _cali_handle[i] = nullptr;
-    }
+EspAdcDmaDriver::EspAdcDmaDriver() : 
+    _handle(nullptr),
+    _is_initialized(false),
+    _is_running(false) 
+{
+    std::memset(&_config, 0, sizeof(adc_dma_config_t));
+    std::memset(&_latest_data, 0, sizeof(adc_sensor_data_t));
 }
 
 EspAdcDmaDriver::~EspAdcDmaDriver() {
     stop();
-    if (_is_initialized) {
+    if (_is_initialized && _handle != nullptr) {
         adc_continuous_deinit(_handle);
-        for (int i = 0; i < NUM_SENSORS; i++) {
-            _deinit_calibration(_cali_handle[i]);
-        }
     }
 }
 
-void EspAdcDmaDriver::_init_calibration(adc_unit_t unit, adc_channel_t channel,
-                                        adc_atten_t atten,
-                                        adc_cali_handle_t *out_handle) {
-    adc_cali_line_fitting_config_t cali_config = {};
-    cali_config.unit_id = unit;
-    cali_config.atten = atten;
-    cali_config.bitwidth = ADC_BITWIDTH_12;
-#if CONFIG_IDF_TARGET_ESP32
-    cali_config.default_vref = 1100;
-#endif
-
-    esp_err_t ret = adc_cali_create_scheme_line_fitting(&cali_config, out_handle);
-    if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "Calibration OK for channel %d", channel);
-    } else if (ret == ESP_ERR_NOT_SUPPORTED) {
-        ESP_LOGW(TAG, "Calibration missing for channel %d", channel);
-    } else {
-        ESP_LOGE(TAG, "Calibration fail for channel %d", channel);
-    }
+bool IRAM_ATTR EspAdcDmaDriver::_on_pool_ovf(adc_continuous_handle_t handle, const adc_continuous_evt_data_t *edata, void *user_data) {
+    return false;
 }
 
-void EspAdcDmaDriver::_deinit_calibration(adc_cali_handle_t handle) {
-    if (handle) {
-        adc_cali_delete_scheme_line_fitting(handle);
-    }
-}
-
-esp_err_t EspAdcDmaDriver::init(const adc_dma_config_t &config) {
+esp_err_t EspAdcDmaDriver::init(const adc_dma_config_t& config) {
     if (_is_initialized) return ESP_ERR_INVALID_STATE;
     _config = config;
 
     adc_continuous_handle_cfg_t handle_cfg = {};
-    handle_cfg.max_store_buf_size = _config.dma_frame_size * 4;
+    handle_cfg.max_store_buf_size = 1024;
     handle_cfg.conv_frame_size = _config.dma_frame_size;
-    CHECK_RET(adc_continuous_new_handle(&handle_cfg, &_handle));
+    
+    esp_err_t ret = adc_continuous_new_handle(&handle_cfg, &_handle);
+    if (ret != ESP_OK) return ret;
 
-    adc_continuous_config_t adc_cfg = {};
-    adc_cfg.sample_freq_hz = _config.sample_freq_hz;
-    adc_cfg.conv_mode = ADC_CONV_SINGLE_UNIT_1;
-    adc_cfg.format = ADC_DIGI_OUTPUT_FORMAT_TYPE1;
-
-    adc_digi_pattern_config_t adc_pattern[NUM_SENSORS] = {};
+    adc_continuous_config_t cont_cfg = {};
+    cont_cfg.pattern_num = NUM_SENSORS;
+    
+    adc_digi_pattern_config_t pattern[NUM_SENSORS];
     for (int i = 0; i < NUM_SENSORS; i++) {
-        adc_pattern[i].atten = ADC_ATTEN_DB_12;
-        adc_pattern[i].channel = _config.channel_map[i];
-        adc_pattern[i].unit = ADC_UNIT_1;
-        adc_pattern[i].bit_width = ADC_BITWIDTH_12;
-        _init_calibration(ADC_UNIT_1, _config.channel_map[i], ADC_ATTEN_DB_12, &_cali_handle[i]);
+        pattern[i].atten = ADC_ATTEN_DB_12; 
+        pattern[i].channel = _config.channel_map[i];
+        pattern[i].unit = ADC_UNIT_1;
+        pattern[i].bit_width = SOC_ADC_DIGI_MAX_BITWIDTH;
     }
-    adc_cfg.pattern_num = NUM_SENSORS;
-    adc_cfg.adc_pattern = adc_pattern;
+    cont_cfg.adc_pattern = pattern;
+    cont_cfg.sample_freq_hz = _config.sample_freq_hz;
+    cont_cfg.format = ADC_DIGI_OUTPUT_FORMAT_TYPE1;
 
-    CHECK_RET(adc_continuous_config(_handle, &adc_cfg));
+    ret = adc_continuous_config(_handle, &cont_cfg);
+    if (ret != ESP_OK) {
+        adc_continuous_deinit(_handle);
+        return ret;
+    }
 
-    adc_continuous_evt_cbs_t cbs = {};
-    cbs.on_pool_ovf = _on_pool_ovf;
-    CHECK_RET(adc_continuous_register_event_callbacks(_handle, &cbs, this));
+    adc_continuous_evt_cbs_t cbs = {
+        .on_conv_done = nullptr,
+        .on_pool_ovf = _on_pool_ovf
+    };
+    ret = adc_continuous_register_event_callbacks(_handle, &cbs, this);
+    if (ret != ESP_OK) {
+        adc_continuous_deinit(_handle);
+        return ret;
+    }
 
     _is_initialized = true;
     return ESP_OK;
 }
 
-bool IRAM_ATTR EspAdcDmaDriver::_on_pool_ovf(
-    adc_continuous_handle_t handle, const adc_continuous_evt_data_t *edata,
-    void *user_data) {
-    return false;
-}
-
 esp_err_t EspAdcDmaDriver::start() {
     if (!_is_initialized || _is_running) return ESP_ERR_INVALID_STATE;
-
-    CHECK_RET(adc_continuous_start(_handle));
-
-    _is_running = true;
-    return ESP_OK;
+    esp_err_t ret = adc_continuous_start(_handle);
+    if (ret == ESP_OK) {
+        _is_running = true;
+    }
+    return ret;
 }
 
 esp_err_t EspAdcDmaDriver::stop() {
     if (!_is_running) return ESP_ERR_INVALID_STATE;
-
-    _is_running = false;
-    CHECK_RET(adc_continuous_stop(_handle));
-    return ESP_OK;
+    esp_err_t ret = adc_continuous_stop(_handle);
+    if (ret == ESP_OK) {
+        _is_running = false;
+    }
+    return ret;
 }
 
 esp_err_t EspAdcDmaDriver::process_dma_events(TickType_t timeout) {
     if (!_is_running) return ESP_ERR_INVALID_STATE;
 
-    uint8_t result_buf[256];
-    uint32_t ret_num = 0;
-    adc_sensor_data_t local_frame = {};
-    int count_found = 0;
+    uint8_t result_buf[256]; 
+    uint32_t out_length = 0;
+    
+    uint32_t timeout_ms;
+    if (timeout == portMAX_DELAY) {
+        timeout_ms = -1; // portMAX_DELAY maps to HAL_MAX_DELAY
+    } else {
+        timeout_ms = timeout * portTICK_PERIOD_MS;
+    }
 
-    uint32_t timeout_ms = (timeout == portMAX_DELAY) ? portMAX_DELAY : (timeout * portTICK_PERIOD_MS);
-    esp_err_t ret = adc_continuous_read(_handle, result_buf, sizeof(result_buf), &ret_num, timeout_ms);
+    esp_err_t ret = adc_continuous_read(_handle, result_buf, sizeof(result_buf), &out_length, timeout_ms);
+    if (ret == ESP_ERR_TIMEOUT) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+        return ret;
+    } else if (ret != ESP_OK) {
+        return ret;
+    }
 
-    if (ret == ESP_OK) {
-        for (uint32_t i = 0; i < ret_num; i += sizeof(adc_digi_output_data_t)) {
-            adc_digi_output_data_t *p = (adc_digi_output_data_t *)&result_buf[i];
-            uint32_t chan_num = p->type1.channel;
-            uint32_t data = p->type1.data;
-
-            for (int s = 0; s < NUM_SENSORS; s++) {
-                if (_config.channel_map[s] == chan_num) {
-                    local_frame.raw[s] = data;
-                    if (_cali_handle[s]) {
-                        adc_cali_raw_to_voltage(_cali_handle[s], data, &local_frame.voltage_mv[s]);
-                    } else {
-                        local_frame.voltage_mv[s] = -1;
-                    }
-                    count_found++;
-                    break;
-                }
-            }
-
-            if (count_found >= NUM_SENSORS) {
-                portENTER_CRITICAL(&_spinlock);
-                _latest_data = local_frame;
-                portEXIT_CRITICAL(&_spinlock);
-                count_found = 0;
+    adc_sensor_data_t local_frame;
+    bool updated[NUM_SENSORS] = {false};
+    
+    for (uint32_t i = 0; i < out_length; i += SOC_ADC_DIGI_RESULT_BYTES) {
+        adc_digi_output_data_t *p = (adc_digi_output_data_t*)&result_buf[i];
+        uint32_t chan_num = p->type1.channel;
+        uint32_t data = p->type1.data;
+        
+        for (int s = 0; s < NUM_SENSORS; s++) {
+            if (_config.channel_map[s] == chan_num) {
+                local_frame.raw[s] = data;
+                updated[s] = true;
+                break;
             }
         }
-    } else if (ret == ESP_ERR_TIMEOUT) {
-        vTaskDelay(pdMS_TO_TICKS(10));
     }
-    
-    return ret;
+
+    portENTER_CRITICAL(&_spinlock);
+    for (int s = 0; s < NUM_SENSORS; s++) {
+        if (updated[s]) {
+            _latest_data.raw[s] = local_frame.raw[s];
+        }
+    }
+    portEXIT_CRITICAL(&_spinlock);
+
+    return ESP_OK;
 }
 
-void EspAdcDmaDriver::read_sensor_data(adc_sensor_data_t *out_data) {
-    if (!out_data) return;
-
+void EspAdcDmaDriver::read_sensor_data(adc_sensor_data_t* out_data) {
+    if (out_data == nullptr) return;
+    
     portENTER_CRITICAL(&_spinlock);
     *out_data = _latest_data;
     portEXIT_CRITICAL(&_spinlock);
 }
+
+// RISK REVIEW:
+// - Caller Responsibilities: The caller must execute process_dma_events() continuously within a dedicated or appropriately scheduled high-priority task. It is the caller's duty to provide an adequate tick timeout value and handle ESP_ERR_TIMEOUT or other ESP-IDF errors gracefully.
+// - Data Dropping Risks: If the task processing rate (the caller loop) falls behind the configured sample_freq_hz, the internal 1024-byte DMA buffer will overflow. The _on_pool_ovf callback will trigger but return false. As a result, older ADC data will be overwritten and permanently lost, causing the AMR to read stale or missing patterns over critical path lines.

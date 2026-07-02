@@ -1,112 +1,96 @@
-#include "driver/gpio.h"
-#include "esp_log.h"
-#include "esp_timer.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include <stdio.h>
+#include <esp_log.h>
+#include <esp_timer.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
-// Hardware and modules
-#include "../include/telemetry.hpp"
+#include "../include/motion_task.hpp"
+#include "../include/shared_state.hpp"
+#include "../include/telemetry_task.hpp"
+
 #include "../lib/adc_dma/adc_dma.hpp"
 #include "../lib/tb6612_encoder/tb6612_encoder.hpp"
+#include "../lib/velocity_pid/velocity_pid.hpp"
 #include "../lib/wifi_manager/wifi_manager.hpp"
 
-static const char *TAG = "MAIN";
+static const char *TAG = "ORCHESTRATOR";
 
-// Global Instances
+// ==================== HARDWARE PIN MAPPING ====================
+// --- TB6612FNG Motor Driver Pins ---
+constexpr int PIN_MOTOR_L_PWM = 17;
+constexpr int PIN_MOTOR_L_IN1 = 16;
+constexpr int PIN_MOTOR_L_IN2 = 4;
+
+constexpr int PIN_MOTOR_R_PWM = 23;
+constexpr int PIN_MOTOR_R_IN1 = 19;
+constexpr int PIN_MOTOR_R_IN2 = 18;
+
+// --- JGB37-520 Encoder Pins (Must support interrupts) ---
+constexpr int PIN_ENC_L_A = 25;
+constexpr int PIN_ENC_L_B = 26;
+
+constexpr int PIN_ENC_R_A = 27;
+constexpr int PIN_ENC_R_B = 14;
+
+// --- 5-Channel Line Sensor Pins ---
+// Mapped internally via ADC Channels in adc_dma.hpp:
+// SENSOR 1: GPIO36 (ADC1_CH0) - VP
+// SENSOR 2: GPIO39 (ADC1_CH3) - VN
+// SENSOR 3: GPIO32 (ADC1_CH4)
+// SENSOR 4: GPIO33 (ADC1_CH5)
+// SENSOR 5: GPIO34 (ADC1_CH6)
+
+// System-wide configurations
+// const char* UDP_TARGET_IP = "192.168.1.14";
+const char *UDP_TARGET_IP = "192.168.0.116";
+extern const uint16_t UDP_TARGET_PORT;
+const uint16_t UDP_TARGET_PORT = 54321;
+
+// Global Shared State
+SharedRobotState robot_state = {.spinlock = portMUX_INITIALIZER_UNLOCKED,
+                                .adc_raw = {0},
+                                .encoder_left = 0,
+                                .encoder_right = 0,
+                                .pwm_left = 0.0f,
+                                .pwm_right = 0.0f,
+                                .target_rpm_left = 0.0f,
+                                .target_rpm_right = 0.0f,
+                                .actual_rpm_left = 0.0f,
+                                .actual_rpm_right = 0.0f};
+
+// Global Drivers (Workers)
 wifi_manager::WifiManager wifi;
 EspAdcDmaDriver adc_driver;
 Tb6612Encoder motor_left;
 Tb6612Encoder motor_right;
-TelemetryLogger telemetry;
-
-// Task Handles
-TaskHandle_t motor_task_handle = nullptr;
-TaskHandle_t telemetry_task_handle = nullptr;
-TaskHandle_t adc_task_handle = nullptr;
-
-// UDP Target Configuration (Change to match your UI server's IP and port)
-constexpr char TARGET_IP[] = "192.168.1.14";
-constexpr uint16_t TARGET_PORT = 54321;
+VelocityPid pid_left;
+VelocityPid pid_right;
 
 void adc_task(void *pvParameters) {
+  SharedRobotState *state = static_cast<SharedRobotState *>(pvParameters);
   ESP_LOGI(TAG, "ADC Task Started");
+
   while (true) {
-    // Kéo dữ liệu từ DMA RingBuffer liên tục
     adc_driver.process_dma_events(portMAX_DELAY);
-  }
-}
 
-void motor_control_task(void *pvParameters) {
-  ESP_LOGI(TAG, "Motor Control Task Started");
-  TickType_t last_wake_time = xTaskGetTickCount();
-  const TickType_t interval = pdMS_TO_TICKS(10); // 10ms loop (100Hz)
-
-  while (true) {
-    // 1. Read Encoders
-    int64_t enc_l = 0, enc_r = 0;
-    motor_left.get_pulse_count(enc_l);
-    motor_right.get_pulse_count(enc_r);
-
-    // 2. Read ADC
     adc_sensor_data_t adc_data;
     adc_driver.read_sensor_data(&adc_data);
 
-    // 3. Process Control Logic (e.g. PID)
-    // Dummy values for demonstration
-    float pwm_l = 30.0f;
-    float pwm_r = 30.0f;
-    motor_left.set_duty_cycle(pwm_l);
-    motor_right.set_duty_cycle(pwm_r);
-
-    // 4. Push Telemetry Data
-    TelemetryData tdata = {};
-    tdata.timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
-    tdata.encoder_left = enc_l;
-    tdata.encoder_right = enc_r;
-    tdata.pwm_left = pwm_l;
-    tdata.pwm_right = pwm_r;
-    for (int i = 0; i < NUM_SENSORS; ++i) {
-      tdata.adc_raw[i] = adc_data.raw[i];
-      tdata.adc_voltage_mv[i] = adc_data.voltage_mv[i];
+    portENTER_CRITICAL(&state->spinlock);
+    for (int i = 0; i < ROBOT_NUM_SENSORS; i++) {
+      state->adc_raw[i] = adc_data.raw[i];
     }
-
-    // Non-blocking push, takes < 1us
-    telemetry.push_data(tdata);
-
-    // 5. Block until next cycle
-    vTaskDelayUntil(&last_wake_time, interval);
-  }
-}
-
-void telemetry_task(void *pvParameters) {
-  ESP_LOGI(TAG, "Telemetry Task Started");
-  const TickType_t interval = pdMS_TO_TICKS(50); // 20Hz logging rate
-
-  while (true) {
-    // Process telemetry queue and send via WiFi if available
-    telemetry.process();
-
-    // Delay to yield CPU and maintain the logging frequency
-    vTaskDelay(interval);
+    portEXIT_CRITICAL(&state->spinlock);
   }
 }
 
 extern "C" void app_main() {
-  ESP_LOGI(TAG, "Initializing System...");
+  ESP_LOGI(TAG, "Initializing Orchestrator...");
 
-  // 1. Initialize Wi-Fi
-  wifi_manager::WifiConfig wifi_cfg(wifi_manager::WifiMode::MODE_STA, "VIETTEL",
-                                    "0906608600");
+  wifi_manager::WifiConfig wifi_cfg(wifi_manager::WifiMode::MODE_STA,
+                                    "TP-Link_C718", "20017231");
   ESP_ERROR_CHECK(wifi.init(wifi_cfg));
   wifi.start();
 
-  // 2. Initialize Telemetry Logger
-  if (!telemetry.init(&wifi, TARGET_IP, TARGET_PORT)) {
-    ESP_LOGE(TAG, "Failed to initialize Telemetry Logger");
-  }
-
-  // 3. Initialize ADC DMA
   adc_dma_config_t adc_cfg = {};
   adc_cfg.sample_freq_hz = 20000;
   adc_cfg.dma_frame_size = 256;
@@ -118,40 +102,46 @@ extern "C" void app_main() {
   ESP_ERROR_CHECK(adc_driver.init(adc_cfg));
   ESP_ERROR_CHECK(adc_driver.start());
 
-  // 4. Initialize Motors/Encoders
-  tb6612_config_t mleft_cfg = {.pwm_gpio = 17,
-                               .in1_gpio = 16,
-                               .in2_gpio = 4, // Adjust to your actual layout
-                               .enc_a_gpio = 35,
-                               .enc_b_gpio = 34,
+  tb6612_config_t mleft_cfg = {.pwm_gpio = PIN_MOTOR_L_PWM,
+                               .in1_gpio = PIN_MOTOR_L_IN1,
+                               .in2_gpio = PIN_MOTOR_L_IN2,
+                               .enc_a_gpio = PIN_ENC_L_A,
+                               .enc_b_gpio = PIN_ENC_L_B,
                                .pwm_freq_hz = 20000,
                                .encoder_ppr = 341,
                                .pcnt_high_limit = 30000,
                                .pcnt_low_limit = -30000};
   ESP_ERROR_CHECK(motor_left.init(mleft_cfg));
 
-  tb6612_config_t mright_cfg = {.pwm_gpio = 23,
-                                .in1_gpio = 19,
-                                .in2_gpio = 18,
-                                .enc_a_gpio = 39,
-                                .enc_b_gpio = 36,
+  tb6612_config_t mright_cfg = {.pwm_gpio = PIN_MOTOR_R_PWM,
+                                .in1_gpio = PIN_MOTOR_R_IN1,
+                                .in2_gpio = PIN_MOTOR_R_IN2,
+                                .enc_a_gpio = PIN_ENC_R_A,
+                                .enc_b_gpio = PIN_ENC_R_B,
                                 .pwm_freq_hz = 20000,
                                 .encoder_ppr = 341,
                                 .pcnt_high_limit = 30000,
                                 .pcnt_low_limit = -30000};
   ESP_ERROR_CHECK(motor_right.init(mright_cfg));
 
-  // 5. Create Tasks
-  // ADC task gets highest priority to process DMA fast enough
-  xTaskCreate(adc_task, "ADC_Task", 4096, nullptr, 6, &adc_task_handle);
+  velocity_pid_config_t pid_cfg = {
+      .kp = 1.0f,
+      .ki = 0.0f,
+      .kd = 0.0f,
+      .out_max = 85.0f, // Giới hạn điện áp cấp (PWM) max là 85%
+      .out_min = -85.0f,
+      .integral_max = 85.0f, // Giới hạn Windup tích phân tương ứng
+      .max_accel_units_s2 = 1000.0f};
+  pid_left.init(pid_cfg);
+  pid_right.init(pid_cfg);
 
-  // Motor task gets high priority (5) to ensure precise, uninterrupted control loop
-  xTaskCreate(motor_control_task, "Motor_Task", 4096, nullptr, 5,
-              &motor_task_handle);
+  // Orchestrate tasks with explicit Core Pinning and Priorities
+  xTaskCreatePinnedToCore(adc_task, "ADC_Task", 4096, &robot_state, 6, nullptr,
+                          1);
+  xTaskCreatePinnedToCore(motion_task_routine, "Motion_Task", 4096,
+                          &robot_state, 5, nullptr, 1);
+  xTaskCreatePinnedToCore(telemetry_task_routine, "Tele_Task", 4096,
+                          &robot_state, 2, nullptr, 0);
 
-  // Telemetry task gets low priority (2) to avoid interfering with motor control
-  xTaskCreate(telemetry_task, "Tele_Task", 4096, nullptr, 2,
-              &telemetry_task_handle);
-
-  ESP_LOGI(TAG, "Initialization Complete. Main task entering Idle.");
+  ESP_LOGI(TAG, "Tasks deployed. Yielding app_main.");
 }

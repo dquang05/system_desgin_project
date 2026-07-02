@@ -1,118 +1,102 @@
-#include "motion_task.hpp"
-#include "esp_log.h"
-#include "esp_timer.h"
-#include <cmath>
+#include "../include/motion_task.hpp"
+#include "../include/shared_state.hpp"
+#include "../lib/tb6612_encoder/tb6612_encoder.hpp"
+#include "../lib/velocity_pid/velocity_pid.hpp"
+#include <esp_timer.h>
 
-static const char* TAG = "MOTION_TASK";
+extern Tb6612Encoder motor_left;
+extern Tb6612Encoder motor_right;
+extern VelocityPid pid_left;
+extern VelocityPid pid_right;
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846f
-#endif
-
-// Definition of global variables
-wheel_vel_t global_target_vel = {0.0f, 0.0f};
-SemaphoreHandle_t global_vel_mutex = nullptr;
-
-static void motion_control_task(void *pvParameters) {
-    if (global_vel_mutex == nullptr) {
-        ESP_LOGE(TAG, "Mutex not initialized! Task terminating.");
-        vTaskDelete(nullptr);
-        return;
-    }
-
+void motion_task_routine(void *pvParameters) {
+    SharedRobotState* state = static_cast<SharedRobotState*>(pvParameters);
     TickType_t last_wake_time = xTaskGetTickCount();
-    const TickType_t freq_ticks = pdMS_TO_TICKS(10); // 10ms loop
-    
-    int64_t last_time_us = esp_timer_get_time();
-    int64_t last_pulse_left = 0;
-    int64_t last_pulse_right = 0;
+    const TickType_t freq_ticks = pdMS_TO_TICKS(10); // 100Hz 
 
-    // Get initial pulse counts
-    motor_left.get_pulse_count(last_pulse_left);
-    motor_right.get_pulse_count(last_pulse_right);
+    int64_t last_time_us = esp_timer_get_time();
+    int64_t last_pulse_l = 0;
+    int64_t last_pulse_r = 0;
+
+    motor_left.get_pulse_count(last_pulse_l);
+    motor_right.get_pulse_count(last_pulse_r);
 
     while (true) {
-        // a) Lock Mutex, copy global_target_vel, unlock
-        wheel_vel_t local_target_vel = {0.0f, 0.0f};
-        if (xSemaphoreTake(global_vel_mutex, portMAX_DELAY) == pdTRUE) {
-            local_target_vel = global_target_vel;
-            xSemaphoreGive(global_vel_mutex);
-        }
+        int64_t current_pulse_l = 0;
+        int64_t current_pulse_r = 0;
+        motor_left.get_pulse_count(current_pulse_l);
+        motor_right.get_pulse_count(current_pulse_r);
 
-        // b) Update PID setpoints
-        pid_left.set_target_velocity(local_target_vel.left);
-        pid_right.set_target_velocity(local_target_vel.right);
-
-        // c) Read current pulse counts
-        int64_t current_pulse_left = 0;
-        int64_t current_pulse_right = 0;
-        motor_left.get_pulse_count(current_pulse_left);
-        motor_right.get_pulse_count(current_pulse_right);
-
-        // Calculate delta time
         int64_t current_time_us = esp_timer_get_time();
         int64_t delta_time_us = current_time_us - last_time_us;
-        
-        // Prevent division by zero if task runs too fast
-        if (delta_time_us <= 0) {
-            vTaskDelayUntil(&last_wake_time, freq_ticks);
-            continue;
+
+        if (delta_time_us > 0) {
+            float dt_s = static_cast<float>(delta_time_us) / 1000000.0f;
+            float raw_rpm_l = 0.0f;
+            float raw_rpm_r = 0.0f;
+
+            motor_left.get_current_rpm(current_pulse_l, last_pulse_l, delta_time_us, raw_rpm_l);
+            motor_right.get_current_rpm(current_pulse_r, last_pulse_r, delta_time_us, raw_rpm_r);
+
+            // JGB37-520 Hardware Quadrature Scaling (x4 division)
+            float instant_rpm_l = raw_rpm_l / 4.0f;
+            float instant_rpm_r = raw_rpm_r / 4.0f;
+
+            // --- BỘ LỌC LOW-PASS FILTER (EMA) KHỬ NHIỄU LƯỢNG TỬ HÓA ---
+            // Ở tần số lấy mẫu 100Hz (10ms), chênh lệch 1 xung encoder có thể làm RPM giật ~4.5 vòng/phút
+            static float filtered_rpm_l = 0.0f;
+            static float filtered_rpm_r = 0.0f;
+            const float ALPHA = 0.15f; // Hệ số lọc. Càng nhỏ càng mượt nhưng trễ pha hơn (0.1 -> 0.3 là đẹp)
+
+            filtered_rpm_l = (ALPHA * instant_rpm_l) + ((1.0f - ALPHA) * filtered_rpm_l);
+            filtered_rpm_r = (ALPHA * instant_rpm_r) + ((1.0f - ALPHA) * filtered_rpm_r);
+
+            float rpm_l = filtered_rpm_l;
+            float rpm_r = filtered_rpm_r;
+
+            // Extract sensor data safely to make steering decisions
+            uint32_t sensor_snapshot[ROBOT_NUM_SENSORS];
+            portENTER_CRITICAL(&state->spinlock);
+            for (int i = 0; i < ROBOT_NUM_SENSORS; i++) {
+                sensor_snapshot[i] = state->adc_raw[i];
+            }
+            portEXIT_CRITICAL(&state->spinlock);
+            (void)sensor_snapshot; // Silence unused variable warning
+
+            // TODO: Execute AMR Line Following Logic to define target_rpm_l & target_rpm_r
+            // TODO: Khai báo tốc độ tối đa theo thông số thực tế của motor JGB37-520 (VD: 330, 600)
+            const float MAX_RPM = 330.0f; 
+
+            // TEST CLOSED-LOOP: Motor A dừng, Motor B chạy 50% vận tốc thật sự (RPM)
+            float target_rpm_l = 0.0f; 
+            float target_rpm_r = MAX_RPM * 0.5f; // 50% Tốc độ thực tế
+
+            pid_left.set_target_velocity(target_rpm_l);
+            pid_right.set_target_velocity(target_rpm_r);
+
+            float duty_l = pid_left.compute(rpm_l, dt_s);
+            float duty_r = pid_right.compute(rpm_r, dt_s);
+
+            motor_left.set_duty_cycle(duty_l);
+            motor_right.set_duty_cycle(duty_r);
+
+            // Atomically update state for the Telemetry Task
+            portENTER_CRITICAL(&state->spinlock);
+            state->encoder_left = current_pulse_l;
+            state->encoder_right = current_pulse_r;
+            state->pwm_left = duty_l;
+            state->pwm_right = duty_r;
+            state->target_rpm_left = target_rpm_l;
+            state->target_rpm_right = target_rpm_r;
+            state->actual_rpm_left = rpm_l;
+            state->actual_rpm_right = rpm_r;
+            portEXIT_CRITICAL(&state->spinlock);
         }
-        
-        float dt_s = static_cast<float>(delta_time_us) / 1000000.0f;
 
-        // d) Calculate current RPM
-        float rpm_left = 0.0f;
-        float rpm_right = 0.0f;
-        motor_left.get_current_rpm(current_pulse_left, last_pulse_left, delta_time_us, rpm_left);
-        motor_right.get_current_rpm(current_pulse_right, last_pulse_right, delta_time_us, rpm_right);
-
-        // e) Convert RPM to linear velocity (mm/s)
-        float current_vel_left = (rpm_left / 60.0f) * 2.0f * M_PI * WHEEL_RADIUS_MM;
-        float current_vel_right = (rpm_right / 60.0f) * 2.0f * M_PI * WHEEL_RADIUS_MM;
-
-        // f) Compute PID duty cycles
-        float duty_left = pid_left.compute(current_vel_left, dt_s);
-        float duty_right = pid_right.compute(current_vel_right, dt_s);
-
-        // g) Update motor duty cycles
-        motor_left.set_duty_cycle(duty_left);
-        motor_right.set_duty_cycle(duty_right);
-
-        // h) Update state for next cycle
-        last_pulse_left = current_pulse_left;
-        last_pulse_right = current_pulse_right;
+        last_pulse_l = current_pulse_l;
+        last_pulse_r = current_pulse_r;
         last_time_us = current_time_us;
 
-        // i) Delay until next cycle
         vTaskDelayUntil(&last_wake_time, freq_ticks);
     }
 }
-
-void motion_task_start() {
-    global_vel_mutex = xSemaphoreCreateMutex();
-    if (global_vel_mutex == nullptr) {
-        ESP_LOGE(TAG, "Failed to create global_vel_mutex");
-        return;
-    }
-
-    BaseType_t res = xTaskCreatePinnedToCore(
-        motion_control_task,
-        "motion_ctrl_tsk",
-        4096,           // Stack size
-        nullptr,        // Parameters
-        5,              // High priority
-        nullptr,        // Task handle
-        1               // Run on Core 1
-    );
-
-    if (res != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create motion_control_task");
-    } else {
-        ESP_LOGI(TAG, "Motion control task started successfully");
-    }
-}
-
-// RISK REVIEW:
-// - Deadlock Risk: There is a risk of deadlock or severe latency if other tasks hold `global_vel_mutex` for too long. Ensure that any task writing to `global_target_vel` acquires the mutex, copies the data quickly, and releases it immediately without blocking.
-// - Tick Rate Recommendation: It is highly recommended to increase `CONFIG_FREERTOS_HZ` to 1000 in menuconfig. The default 100Hz tick rate means the minimum delay resolution is 10ms. For a precise 10ms control loop using `vTaskDelayUntil`, a 1000Hz tick rate (1ms resolution) ensures much tighter scheduling and reduces jitter in the PID control loop.
