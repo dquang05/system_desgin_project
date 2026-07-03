@@ -8,29 +8,29 @@
 
 static const char *TAG = "WIFI_TEST";
 
-// Chân GPIO an toàn (không dùng touch/ADC quan trọng)
-// GPIO 25 có thể kích hoạt điện trở kéo xuống (pull-down) an toàn
+// Safe GPIO pin (avoids critical touch/ADC channels)
+// GPIO 25 safely supports internal pull-down resistors
 #define WIFI_CONTROL_GPIO GPIO_NUM_25
 
 extern "C" void app_main() {
   ESP_LOGI(TAG, "Starting Wi-Fi Manager Test...");
 
-  // 1. Khởi tạo Wi-Fi
+  // 1. Initialize Wi-Fi
   static wifi_manager::WifiManager wifi;
   wifi_manager::WifiConfig config(wifi_manager::WifiMode::MODE_STA, "VIETTEL",
                                   "0906608600");
   // wifi.init(config);
 
-  // Dừng Wi-Fi ngay từ đầu (mặc định), đợi tín hiệu từ GPIO
+  // Stop Wi-Fi initially, wait for GPIO signal
   wifi.stop();
 
-  // 2. Cấu hình GPIO input với điện trở kéo xuống (mặc định là LOW)
+  // 2. Configure GPIO input with pull-down resistor (default LOW)
   gpio_config_t io_conf = {};
   io_conf.intr_type =
-      GPIO_INTR_DISABLE; // Dùng kiểu polling cho đơn giản & tránh nhiễu nút bấm
+      GPIO_INTR_DISABLE; // Polling mode for simplicity & debounce
   io_conf.mode = GPIO_MODE_INPUT;
   io_conf.pin_bit_mask = (1ULL << WIFI_CONTROL_GPIO);
-  io_conf.pull_down_en = GPIO_PULLDOWN_ENABLE; // Kéo xuống LOW
+  io_conf.pull_down_en = GPIO_PULLDOWN_ENABLE; // Pull down to LOW
   io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
   gpio_config(&io_conf);
 
@@ -38,7 +38,7 @@ extern "C" void app_main() {
            "Wi-Fi is currently STOPPED. Set GPIO %d to HIGH to start Wi-Fi.",
            WIFI_CONTROL_GPIO);
 
-  // 3. Vòng lặp chính kiểm tra tín hiệu
+  // 3. Main loop to check GPIO signal
   bool last_state = false;
   uint32_t last_log_time = 0;
   float x = 1.0f;
@@ -50,24 +50,24 @@ extern "C" void app_main() {
     //   last_state = current_state;
 
     //   if (current_state) {
-    //     ESP_LOGI(TAG, "GPIO %d is HIGH -> BẬT Wi-Fi", WIFI_CONTROL_GPIO);
+    //     ESP_LOGI(TAG, "GPIO %d is HIGH -> Start Wi-Fi", WIFI_CONTROL_GPIO);
     //     // wifi.start();
     //   } else {
-    //     ESP_LOGI(TAG, "GPIO %d is LOW -> TẮT Wi-Fi", WIFI_CONTROL_GPIO);
+    //     ESP_LOGI(TAG, "GPIO %d is LOW -> Stop Wi-Fi", WIFI_CONTROL_GPIO);
     //     wifi.stop();
     //   }
     // }
 
-    // // Nếu Wi-Fi đang bật, kiểm tra kết nối và gửi log mỗi 2s
+    // // If Wi-Fi is enabled, check connection and send logs every 2s
     // if (current_state) {
-    //   // Kiểm tra trạng thái bằng hàm không log (tránh spam CPU/UART)
+    //   // Check status silently (avoids CPU/UART spam)
     //   if (wifi.is_connected()) {
     //     uint32_t current_time = pdTICKS_TO_MS(xTaskGetTickCount());
-    //     // Kiểm tra xem đã qua 2000ms (2s) chưa
+    //     // Check if 2000ms (2s) have passed
     //     if (current_time - last_log_time >= 2000) {
     //       last_log_time = current_time;
 
-    //       // Demo gửi dữ liệu định kỳ
+    //       // Demo periodic data transmission
     //       const char *dummy_log = "{\"sensor\": \"temp\", \"value\": 25.4}";
     //       bool sent =
     //           wifi.send_log_data("192.168.1.14", 54321,
@@ -82,8 +82,7 @@ extern "C" void app_main() {
     //   }
     // }
 
-    // // Trễ 100ms: Vừa tiết kiệm CPU, vừa dùng làm debouncer chống nhiễu phím
-    // // cứng
+    // // 100ms delay: Saves CPU and acts as a hardware debouncer
 
     x = x * 1.0001f;
     ESP_LOGE(TAG, "Value of x: %f", x);

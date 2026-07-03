@@ -21,11 +21,11 @@ void adc_test_task(void *arg) {
     adc_driver.read_sensor_data(&data);
 
     ESP_LOGI(TAG,
-             "Sensor 1: %d mV, Sensor 2: %d mV, Sensor 3: %d mV, Sensor 4: %d "
-             "mV, Sensor 5: %d mV",
-             data.get_voltage(SENSOR_01), data.get_voltage(SENSOR_02),
-             data.get_voltage(SENSOR_03), data.get_voltage(SENSOR_04),
-             data.get_voltage(SENSOR_05));
+             "Sensor 1: %d, Sensor 2: %d, Sensor 3: %d, Sensor 4: %d "
+             ", Sensor 5: %d",
+             data.raw[SENSOR_01], data.raw[SENSOR_02],
+             data.raw[SENSOR_03], data.raw[SENSOR_04],
+             data.raw[SENSOR_05]);
 
     vTaskDelay(pdMS_TO_TICKS(1000));
   }

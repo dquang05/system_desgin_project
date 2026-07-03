@@ -44,7 +44,7 @@ void test_motor_forward_backward_and_encoder_read() {
       .enc_b_gpio = 35,
       .pwm_freq_hz = 20000,
       .encoder_ppr =
-          341, // Example: 341 PPR. Vui lòng sửa lại đúng loại motor của bạn!
+          341, // Example: 341 PPR. Please update to match your specific motor!
       .pcnt_high_limit = 30000,
       .pcnt_low_limit = -30000};
 
@@ -112,9 +112,9 @@ void test_motor_forward_backward_and_encoder_read() {
   motor.set_duty_cycle(0.0f);
 }
 
-// Bắt buộc trong PlatformIO khi chạy test
+// Required entry point for PlatformIO testing
 extern "C" void app_main() {
-  // Delay xíu để mở Serial Monitor k kịp vẫn đọc được log
+  // Short delay to allow Serial Monitor to connect and capture early logs
   vTaskDelay(pdMS_TO_TICKS(2000));
 
   UNITY_BEGIN();

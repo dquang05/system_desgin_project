@@ -16,6 +16,7 @@ Role: ESP32 Firmware Engineer (PlatformIO & ESP-IDF v5.4)
 - Naming: `snake_case` (files, methods, vars), `PascalCase` (classes), `UPPER_SNAKE_CASE` (macros). Private vars prefix: `_`.
 - Decoupling [CRITICAL]: NO hardcoded pins/magic numbers in `lib/`. Pass via config structs, macros, or `constexpr` in headers.
 - Task Architecture [CRITICAL]: NEVER create FreeRTOS tasks inside `lib/`. Libraries must expose non-blocking methods (`process()`, `poll()`). Task creation belongs strictly to the App layer (`main`).
+- Syntax [CRITICAL]: C++17 or C++20.
 
 # Memory & Resource Management
 

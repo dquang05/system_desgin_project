@@ -42,11 +42,11 @@ void motion_task_routine(void *pvParameters) {
             float instant_rpm_l = raw_rpm_l / 4.0f;
             float instant_rpm_r = raw_rpm_r / 4.0f;
 
-            // --- BỘ LỌC LOW-PASS FILTER (EMA) KHỬ NHIỄU LƯỢNG TỬ HÓA ---
-            // Ở tần số lấy mẫu 100Hz (10ms), chênh lệch 1 xung encoder có thể làm RPM giật ~4.5 vòng/phút
+            // --- EMA LOW-PASS FILTER FOR QUANTIZATION NOISE REDUCTION ---
+            // At 100Hz sampling rate (10ms), a 1-pulse encoder difference can cause an RPM jump of ~4.5 RPM
             static float filtered_rpm_l = 0.0f;
             static float filtered_rpm_r = 0.0f;
-            const float ALPHA = 0.15f; // Hệ số lọc. Càng nhỏ càng mượt nhưng trễ pha hơn (0.1 -> 0.3 là đẹp)
+            const float ALPHA = 0.15f; // Filter coefficient. Smaller = smoother but higher phase lag (0.1 -> 0.3 is optimal)
 
             filtered_rpm_l = (ALPHA * instant_rpm_l) + ((1.0f - ALPHA) * filtered_rpm_l);
             filtered_rpm_r = (ALPHA * instant_rpm_r) + ((1.0f - ALPHA) * filtered_rpm_r);
@@ -64,12 +64,12 @@ void motion_task_routine(void *pvParameters) {
             (void)sensor_snapshot; // Silence unused variable warning
 
             // TODO: Execute AMR Line Following Logic to define target_rpm_l & target_rpm_r
-            // TODO: Khai báo tốc độ tối đa theo thông số thực tế của motor JGB37-520 (VD: 330, 600)
+            // TODO: Define max speed according to actual JGB37-520 motor specs (e.g., 330, 600)
             const float MAX_RPM = 330.0f; 
 
-            // TEST CLOSED-LOOP: Motor A dừng, Motor B chạy 50% vận tốc thật sự (RPM)
+            // TEST CLOSED-LOOP: Motor A stopped, Motor B runs at 50% of actual velocity (RPM)
             float target_rpm_l = 0.0f; 
-            float target_rpm_r = MAX_RPM * 0.5f; // 50% Tốc độ thực tế
+            float target_rpm_r = MAX_RPM * 0.5f; // 50% of Actual Speed
 
             pid_left.set_target_velocity(target_rpm_l);
             pid_right.set_target_velocity(target_rpm_r);

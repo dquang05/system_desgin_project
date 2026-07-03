@@ -230,7 +230,7 @@ bool WifiManager::send_log_data(const char *ip, uint16_t port,
                    sizeof(dest_addr));
   if (err < 0) {
     ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
-    // Nếu lỗi gửi, có thể do mạng, ta tạm đóng socket để lần sau tạo lại
+    // Close socket on network error to force recreation on next attempt
     close(_udp_sock);
     _udp_sock = -1;
     return false;

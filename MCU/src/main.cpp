@@ -11,6 +11,7 @@
 #include "../lib/tb6612_encoder/tb6612_encoder.hpp"
 #include "../lib/velocity_pid/velocity_pid.hpp"
 #include "../lib/wifi_manager/wifi_manager.hpp"
+#include "../lib/loadcell_hx711/loadcell_hx711.hpp"
 
 static const char *TAG = "ORCHESTRATOR";
 
@@ -39,6 +40,10 @@ constexpr int PIN_ENC_R_B = 14;
 // SENSOR 4: GPIO33 (ADC1_CH5)
 // SENSOR 5: GPIO34 (ADC1_CH6)
 
+// --- HX711 Loadcell Pins ---
+constexpr gpio_num_t PIN_LOADCELL_DT = GPIO_NUM_35;
+constexpr gpio_num_t PIN_LOADCELL_SCK = GPIO_NUM_13;
+
 // System-wide configurations
 // const char* UDP_TARGET_IP = "192.168.1.14";
 const char *UDP_TARGET_IP = "192.168.0.116";
@@ -55,7 +60,8 @@ SharedRobotState robot_state = {.spinlock = portMUX_INITIALIZER_UNLOCKED,
                                 .target_rpm_left = 0.0f,
                                 .target_rpm_right = 0.0f,
                                 .actual_rpm_left = 0.0f,
-                                .actual_rpm_right = 0.0f};
+                                .actual_rpm_right = 0.0f,
+                                .loadcell_weight = 0.0f};
 
 // Global Drivers (Workers)
 wifi_manager::WifiManager wifi;
@@ -64,6 +70,7 @@ Tb6612Encoder motor_left;
 Tb6612Encoder motor_right;
 VelocityPid pid_left;
 VelocityPid pid_right;
+LoadcellHX711 loadcell(PIN_LOADCELL_DT, PIN_LOADCELL_SCK);
 
 void adc_task(void *pvParameters) {
   SharedRobotState *state = static_cast<SharedRobotState *>(pvParameters);
@@ -80,6 +87,21 @@ void adc_task(void *pvParameters) {
       state->adc_raw[i] = adc_data.raw[i];
     }
     portEXIT_CRITICAL(&state->spinlock);
+  }
+}
+
+void loadcell_task(void *pvParameters) {
+  SharedRobotState *state = static_cast<SharedRobotState *>(pvParameters);
+  ESP_LOGI(TAG, "Loadcell Task Started");
+
+  while (true) {
+    float weight = loadcell.get_units(1);
+
+    portENTER_CRITICAL(&state->spinlock);
+    state->loadcell_weight = weight;
+    portEXIT_CRITICAL(&state->spinlock);
+
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
 
@@ -128,15 +150,33 @@ extern "C" void app_main() {
       .kp = 1.0f,
       .ki = 0.0f,
       .kd = 0.0f,
-      .out_max = 85.0f, // Giới hạn điện áp cấp (PWM) max là 85%
+      .out_max = 85.0f, // Maximum PWM duty cycle limit is 85%
       .out_min = -85.0f,
-      .integral_max = 85.0f, // Giới hạn Windup tích phân tương ứng
+      .integral_max = 85.0f, // Corresponding Integral Anti-Windup limit
       .max_accel_units_s2 = 1000.0f};
   pid_left.init(pid_cfg);
   pid_right.init(pid_cfg);
 
+  if (loadcell.begin(128)) {
+    ESP_LOGI(TAG, "Waiting for HX711 to stabilize...");
+    // 1. Wait for physical strain gauge to settle after power up
+    vTaskDelay(pdMS_TO_TICKS(1000)); 
+    
+    // 2. Discard first few unstable readings
+    loadcell.read_average(3); 
+    
+    // 3. Tare with higher sample count for better zeroing accuracy (20 samples = ~2 seconds)
+    ESP_LOGI(TAG, "Taring loadcell...");
+    loadcell.tare(20);
+    
+    loadcell.set_scale(2280.f);
+    ESP_LOGI(TAG, "Loadcell ready.");
+  }
+
   // Orchestrate tasks with explicit Core Pinning and Priorities
   xTaskCreatePinnedToCore(adc_task, "ADC_Task", 4096, &robot_state, 6, nullptr,
+                          1);
+  xTaskCreatePinnedToCore(loadcell_task, "Load_Task", 4096, &robot_state, 3, nullptr,
                           1);
   xTaskCreatePinnedToCore(motion_task_routine, "Motion_Task", 4096,
                           &robot_state, 5, nullptr, 1);

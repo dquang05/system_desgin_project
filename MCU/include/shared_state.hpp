@@ -15,4 +15,5 @@ struct SharedRobotState {
     float target_rpm_right;
     float actual_rpm_left;
     float actual_rpm_right;
+    float loadcell_weight;
 };

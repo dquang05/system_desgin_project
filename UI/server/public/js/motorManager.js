@@ -14,13 +14,20 @@ export class MotorManager {
             rpmTgtLeft: 0,
             rpmTgtRight: 0,
             rpmActLeft: 0,
-            rpmActRight: 0
+            rpmActRight: 0,
+            weight: 0
         };
         
         this.needsUpdate = false;
         
+        // Chart configuration
+        this.maxDataPoints = 100;
+        
         // Build DOM
         this.buildUI();
+        
+        // Initialize Charts
+        this.initCharts();
         
         // Bind loop
         this.renderLoop = this.renderLoop.bind(this);
@@ -48,6 +55,9 @@ export class MotorManager {
                         <span class="stat-label">RPM (Act/Tgt)</span>
                         <span class="stat-value"><span id="rpm-act-l-val" style="color: var(--text-primary)">0.00</span> / <span id="rpm-tgt-l-val" style="color: var(--text-secondary)">0.00</span></span>
                     </div>
+                    <div class="chart-container" style="height: 200px; margin-top: 15px; padding: 0;">
+                        <canvas id="motor-l-chart"></canvas>
+                    </div>
                 </div>
                 <div class="motor-card">
                     <h3>Motor Right</h3>
@@ -68,6 +78,21 @@ export class MotorManager {
                         <span class="stat-label">RPM (Act/Tgt)</span>
                         <span class="stat-value"><span id="rpm-act-r-val" style="color: var(--text-primary)">0.00</span> / <span id="rpm-tgt-r-val" style="color: var(--text-secondary)">0.00</span></span>
                     </div>
+                    <div class="chart-container" style="height: 200px; margin-top: 15px; padding: 0;">
+                        <canvas id="motor-r-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="motor-grid" style="margin-top: 24px;">
+                <div class="motor-card" style="width: 100%;">
+                    <h3>Loadcell</h3>
+                    <div class="motor-stat">
+                        <span class="stat-label">Current Weight</span>
+                        <span class="stat-value" id="weight-val">0.00</span>
+                    </div>
+                    <div class="chart-container" style="height: 200px; margin-top: 15px; padding: 0;">
+                        <canvas id="weight-chart"></canvas>
+                    </div>
                 </div>
             </div>
         `;
@@ -86,8 +111,70 @@ export class MotorManager {
             pwmRFillPos: document.getElementById('pwm-r-fill-pos'),
             encRVal: document.getElementById('enc-r-val'),
             rpmActRVal: document.getElementById('rpm-act-r-val'),
-            rpmTgtRVal: document.getElementById('rpm-tgt-r-val')
+            rpmTgtRVal: document.getElementById('rpm-tgt-r-val'),
+            
+            weightVal: document.getElementById('weight-val')
         };
+    }
+
+    createChartConfig(yLabel, ySuggestedMax, datasets) {
+        return {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false, // For performance
+                interaction: {
+                    mode: 'nearest',
+                    axis: 'x',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        labels: { color: '#e6edf3' }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'category',
+                        display: true,
+                        ticks: { color: '#8b949e', maxTicksLimit: 10 },
+                        grid: { color: '#30363d' }
+                    },
+                    y: {
+                        display: true,
+                        title: { display: true, text: yLabel, color: '#8b949e' },
+                        ticks: { color: '#8b949e' },
+                        grid: { color: '#30363d' },
+                        suggestedMin: 0,
+                        ...(ySuggestedMax && { suggestedMax: ySuggestedMax })
+                    }
+                }
+            }
+        };
+    }
+
+    initCharts() {
+        const ctxL = document.getElementById('motor-l-chart').getContext('2d');
+        this.chartL = new Chart(ctxL, this.createChartConfig('RPM', undefined, [
+            { label: 'Target', borderColor: '#8b949e', data: [], fill: false, tension: 0.1, pointRadius: 0, borderDash: [5, 5] },
+            { label: 'Actual', borderColor: '#2f81f7', data: [], fill: false, tension: 0.1, pointRadius: 0 }
+        ]));
+        
+        const ctxR = document.getElementById('motor-r-chart').getContext('2d');
+        this.chartR = new Chart(ctxR, this.createChartConfig('RPM', undefined, [
+            { label: 'Target', borderColor: '#8b949e', data: [], fill: false, tension: 0.1, pointRadius: 0, borderDash: [5, 5] },
+            { label: 'Actual', borderColor: '#3fb950', data: [], fill: false, tension: 0.1, pointRadius: 0 }
+        ]));
+        
+        const ctxW = document.getElementById('weight-chart').getContext('2d');
+        this.chartW = new Chart(ctxW, this.createChartConfig('Weight', undefined, [
+            { label: 'Weight', borderColor: '#d29922', data: [], fill: false, tension: 0.1, pointRadius: 0 }
+        ]));
     }
     
     setActive(active) {
@@ -101,6 +188,7 @@ export class MotorManager {
         try {
             const obj = JSON.parse(logEntry.data);
             let updated = false;
+            const timeStr = logEntry.timestamp;
             
             if (obj.enc && Array.isArray(obj.enc) && obj.enc.length === 2) {
                 this.state.encLeft = obj.enc[0];
@@ -125,8 +213,18 @@ export class MotorManager {
                 this.state.rpmActRight = obj.rpm_act[1];
                 updated = true;
             }
+
+            if (obj.weight !== undefined) {
+                this.state.weight = obj.weight;
+                updated = true;
+            }
             
             if (updated) {
+                // Update chart data arrays
+                this.updateChartData(this.chartL, timeStr, [this.state.rpmTgtLeft, this.state.rpmActLeft]);
+                this.updateChartData(this.chartR, timeStr, [this.state.rpmTgtRight, this.state.rpmActRight]);
+                this.updateChartData(this.chartW, timeStr, [this.state.weight]);
+
                 this.needsUpdate = true;
                 if (this.isActive) {
                     requestAnimationFrame(this.renderLoop);
@@ -134,6 +232,20 @@ export class MotorManager {
             }
         } catch (e) {
             // Ignore non-JSON or improperly formatted logs
+        }
+    }
+
+    updateChartData(chart, label, dataArr) {
+        chart.data.labels.push(label);
+        for (let i = 0; i < dataArr.length; i++) {
+            chart.data.datasets[i].data.push(dataArr[i]);
+        }
+        
+        if (chart.data.labels.length > this.maxDataPoints) {
+            chart.data.labels.shift();
+            for (let i = 0; i < dataArr.length; i++) {
+                chart.data.datasets[i].data.shift();
+            }
         }
     }
     
@@ -176,6 +288,15 @@ export class MotorManager {
         this.elements.encRVal.textContent = this.state.encRight.toString();
         this.elements.rpmActRVal.textContent = this.state.rpmActRight.toFixed(2);
         this.elements.rpmTgtRVal.textContent = this.state.rpmTgtRight.toFixed(2);
+
+        if (this.elements.weightVal) {
+            this.elements.weightVal.textContent = this.state.weight.toFixed(2);
+        }
+
+        // Update charts natively
+        this.chartL.update();
+        this.chartR.update();
+        this.chartW.update();
         
         this.needsUpdate = false;
     }
