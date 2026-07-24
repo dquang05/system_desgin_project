@@ -24,7 +24,7 @@ Current hardware platform may include:
 
 ## Development Status
 
-🚧 Work in Progress
+* Work in Progress
 
 This repository is currently under active development. Features and documentation are incomplete and may change without notice.
 
