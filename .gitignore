@@ -36,6 +36,16 @@ _autosave-*
 *.kicad_sch-bak
 *.kicad_pcb-bak
 
+# Hardware Manufacturing Outputs
+*_Gerber/
+*_gerber/
+*.step
+*.csv
+*.drl
+*.pos
+*.gbr
+*.gbrjob
+
 # --- System Files ---
 .DS_Store
 Thumbs.db
