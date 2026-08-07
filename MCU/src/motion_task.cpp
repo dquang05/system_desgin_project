@@ -1,5 +1,6 @@
 #include "../include/motion_task.hpp"
 #include "../include/shared_state.hpp"
+#include "../include/line_tracker.hpp"
 #include "../lib/tb6612_encoder/tb6612_encoder.hpp"
 #include "../lib/velocity_pid/velocity_pid.hpp"
 #include <esp_timer.h>
@@ -20,6 +21,11 @@ void motion_task_routine(void *pvParameters) {
 
     motor_left.get_pulse_count(last_pulse_l);
     motor_right.get_pulse_count(last_pulse_r);
+
+    LineTracker line_tracker;
+    uint32_t loop_counter = 0;
+    float target_rpm_l = 0.0f;
+    float target_rpm_r = 0.0f;
 
     while (true) {
         int64_t current_pulse_l = 0;
@@ -56,20 +62,25 @@ void motion_task_routine(void *pvParameters) {
 
             // Extract sensor data safely to make steering decisions
             uint32_t sensor_snapshot[ROBOT_NUM_SENSORS];
+            LineSensorCalib calib;
+            RobotPhysicalConfig phys_cfg;
+
             portENTER_CRITICAL(&state->spinlock);
             for (int i = 0; i < ROBOT_NUM_SENSORS; i++) {
                 sensor_snapshot[i] = state->adc_raw[i];
             }
+            calib = state->line_calib;
+            phys_cfg = state->physical_config;
             portEXIT_CRITICAL(&state->spinlock);
-            (void)sensor_snapshot; // Silence unused variable warning
 
-            // TODO: Execute AMR Line Following Logic to define target_rpm_l & target_rpm_r
-            // TODO: Define max speed according to actual JGB37-520 motor specs (e.g., 330, 600)
-            const float MAX_RPM = 330.0f; 
-
-            // TEST CLOSED-LOOP: Motor A stopped, Motor B runs at 50% of actual velocity (RPM)
-            float target_rpm_l = 0.0f; 
-            float target_rpm_r = MAX_RPM * 0.5f; // 50% of Actual Speed
+            // Execute Line Tracking PID every 5 ticks (50ms / 20Hz)
+            if (loop_counter % 5 == 0) {
+                // Ensure outer_dt_s reflects the actual period of the outer loop.
+                // Normally it is 5 * 10ms = 50ms (0.05s)
+                float outer_dt_s = 0.05f; 
+                float e2 = line_tracker.compute_e2(sensor_snapshot, calib);
+                line_tracker.compute_target_rpm(e2, outer_dt_s, phys_cfg, target_rpm_l, target_rpm_r);
+            }
 
             pid_left.set_target_velocity(target_rpm_l);
             pid_right.set_target_velocity(target_rpm_r);
@@ -96,6 +107,7 @@ void motion_task_routine(void *pvParameters) {
         last_pulse_l = current_pulse_l;
         last_pulse_r = current_pulse_r;
         last_time_us = current_time_us;
+        loop_counter++;
 
         vTaskDelayUntil(&last_wake_time, freq_ticks);
     }

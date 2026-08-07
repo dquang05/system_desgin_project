@@ -17,31 +17,31 @@ static const char *TAG = "ORCHESTRATOR";
 
 // ==================== HARDWARE PIN MAPPING ====================
 // --- TB6612FNG Motor Driver Pins ---
-constexpr int PIN_MOTOR_L_PWM = 17;
-constexpr int PIN_MOTOR_L_IN1 = 16;
-constexpr int PIN_MOTOR_L_IN2 = 4;
+constexpr int PIN_MOTOR_L_PWM = 25;
+constexpr int PIN_MOTOR_L_IN1 = 26;
+constexpr int PIN_MOTOR_L_IN2 = 27;
 
-constexpr int PIN_MOTOR_R_PWM = 23;
-constexpr int PIN_MOTOR_R_IN1 = 19;
-constexpr int PIN_MOTOR_R_IN2 = 18;
+constexpr int PIN_MOTOR_R_PWM = 14;
+constexpr int PIN_MOTOR_R_IN1 = 16;
+constexpr int PIN_MOTOR_R_IN2 = 17;
 
 // --- JGB37-520 Encoder Pins (Must support interrupts) ---
-constexpr int PIN_ENC_L_A = 25;
-constexpr int PIN_ENC_L_B = 26;
+constexpr int PIN_ENC_L_A = 18;
+constexpr int PIN_ENC_L_B = 19;
 
-constexpr int PIN_ENC_R_A = 27;
-constexpr int PIN_ENC_R_B = 14;
+constexpr int PIN_ENC_R_A = 21;
+constexpr int PIN_ENC_R_B = 22;
 
 // --- 5-Channel Line Sensor Pins ---
 // Mapped internally via ADC Channels in adc_dma.hpp:
-// SENSOR 1: GPIO36 (ADC1_CH0) - VP
-// SENSOR 2: GPIO39 (ADC1_CH3) - VN
-// SENSOR 3: GPIO32 (ADC1_CH4)
-// SENSOR 4: GPIO33 (ADC1_CH5)
-// SENSOR 5: GPIO34 (ADC1_CH6)
+// SENSOR 1: GPIO32 (ADC1_CH4)
+// SENSOR 2: GPIO33 (ADC1_CH5)
+// SENSOR 3: GPIO34 (ADC1_CH6)
+// SENSOR 4: GPIO35 (ADC1_CH7)
+// SENSOR 5: GPIO36 (ADC1_CH0)
 
 // --- HX711 Loadcell Pins ---
-constexpr gpio_num_t PIN_LOADCELL_DT = GPIO_NUM_35;
+constexpr gpio_num_t PIN_LOADCELL_DT = GPIO_NUM_23;
 constexpr gpio_num_t PIN_LOADCELL_SCK = GPIO_NUM_13;
 
 // System-wide configurations
@@ -61,7 +61,9 @@ SharedRobotState robot_state = {.spinlock = portMUX_INITIALIZER_UNLOCKED,
                                 .target_rpm_right = 0.0f,
                                 .actual_rpm_left = 0.0f,
                                 .actual_rpm_right = 0.0f,
-                                .loadcell_weight = 0.0f};
+                                .loadcell_weight = 0.0f,
+                                .line_calib = {},
+                                .physical_config = {}};
 
 // Global Drivers (Workers)
 wifi_manager::WifiManager wifi;

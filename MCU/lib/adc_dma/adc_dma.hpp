@@ -5,11 +5,11 @@
 #include <esp_adc/adc_continuous.h>
 #include <esp_err.h>
 
-#define PIN_ADC_SENSOR_01 ADC_CHANNEL_0 // GPIO36 (VP)
-#define PIN_ADC_SENSOR_02 ADC_CHANNEL_3 // GPIO39 (VN)
-#define PIN_ADC_SENSOR_03 ADC_CHANNEL_4 // GPIO32
-#define PIN_ADC_SENSOR_04 ADC_CHANNEL_5 // GPIO33
-#define PIN_ADC_SENSOR_05 ADC_CHANNEL_6 // GPIO34
+#define PIN_ADC_SENSOR_01 ADC_CHANNEL_4 // GPIO32
+#define PIN_ADC_SENSOR_02 ADC_CHANNEL_5 // GPIO33
+#define PIN_ADC_SENSOR_03 ADC_CHANNEL_6 // GPIO34
+#define PIN_ADC_SENSOR_04 ADC_CHANNEL_7 // GPIO35
+#define PIN_ADC_SENSOR_05 ADC_CHANNEL_0 // GPIO36
 
 /**
  * @brief Enum defining logical IDs for analog sensors.
