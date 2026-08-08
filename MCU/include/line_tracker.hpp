@@ -1,8 +1,18 @@
+/**
+ * @file line_tracker.hpp
+ * @brief Line Tracking PID Controller with derivative filtering.
+ */
 #pragma once
 
 #include <stdint.h>
 #include "shared_state.hpp"
 
+/**
+ * @brief LineTracker class for computing lateral error and target wheel RPMs.
+ * 
+ * Uses a PD control law combined with a discrete derivative filter (tau) 
+ * to smoothly track a path based on a 5-channel analog sensor array.
+ */
 class LineTracker {
 public:
     LineTracker() = default;
@@ -33,6 +43,6 @@ public:
     void reset();
 
 private:
-    float _pre_e2{0.0f};
-    float _pre_Dpart{0.0f};
+    float _prev_e2{0.0f};      /**< Previous lateral error in mm */
+    float _prev_d_part{0.0f};  /**< Previous derivative filter state */
 };

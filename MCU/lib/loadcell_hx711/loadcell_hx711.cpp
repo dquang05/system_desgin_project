@@ -1,3 +1,7 @@
+/**
+ * @file loadcell_hx711.cpp
+ * @brief Implementation of the HX711 Loadcell Amplifier logic.
+ */
 #include "loadcell_hx711.hpp"
 #include "rom/ets_sys.h"
 #include "esp_timer.h"
@@ -65,7 +69,7 @@ long LoadcellHX711::read_raw() {
     // With 10Hz setting, it can take up to 100ms. Timeout set to 150ms.
     uint64_t start_time = _hw_get_time_us();
     while (_hw_read_dt()) {
-        if ((_hw_get_time_us() - start_time) > 150000) {
+        if ((_hw_get_time_us() - start_time) > HX711_TIMEOUT_US) {
             // Timeout occurred
             ESP_LOGE(TAG, "Timeout waiting for DT to go LOW");
             return 0; // Return 0 to avoid hanging the system
@@ -96,9 +100,12 @@ long LoadcellHX711::read_raw() {
         _hw_delay_us(1);
     }
 
-    // Sign extend 24-bit 2's complement to 32-bit signed integer
-    // The 24th bit (MSB of the 24 bits) is the sign bit.
-    // In our `count` variable, the 24 bits occupy bits 0-23.
+    /**
+     * @note Sign-extension logic:
+     * The HX711 returns a 24-bit 2's complement number.
+     * If the 24th bit (bit 23) is 1, the number is negative and we must 
+     * pad the upper 8 bits (of our 32-bit container) with 1s to preserve the sign.
+     */
     if (count & 0x800000) { // If bit 23 is 1 (negative)
         count |= 0xFF000000; // Pad the upper 8 bits with 1s
     } else {

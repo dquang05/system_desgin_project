@@ -1,3 +1,7 @@
+/**
+ * @file adc_dma.cpp
+ * @brief Implementation of the zero-queue ADC DMA driver.
+ */
 #include "adc_dma.hpp"
 #include <cstring>
 
@@ -26,7 +30,7 @@ esp_err_t EspAdcDmaDriver::init(const adc_dma_config_t& config) {
     _config = config;
 
     adc_continuous_handle_cfg_t handle_cfg = {};
-    handle_cfg.max_store_buf_size = 1024;
+    handle_cfg.max_store_buf_size = ADC_MAX_STORE_BUF_SIZE;
     handle_cfg.conv_frame_size = _config.dma_frame_size;
     
     esp_err_t ret = adc_continuous_new_handle(&handle_cfg, &_handle);
@@ -87,9 +91,16 @@ esp_err_t EspAdcDmaDriver::stop() {
 esp_err_t EspAdcDmaDriver::process_dma_events(TickType_t timeout) {
     if (!_is_running) return ESP_ERR_INVALID_STATE;
 
-    uint8_t result_buf[256]; 
+    // Allocate buffer on stack to avoid FreeRTOS RingBuffer complexities (Zero Queue Architecture)
+    uint8_t result_buf[ADC_MAX_STORE_BUF_SIZE]; 
     uint32_t out_length = 0;
     
+    /**
+     * @note Timeout Mapping.
+     * The `adc_continuous_read` API expects timeout in raw milliseconds, NOT FreeRTOS ticks.
+     * `portMAX_DELAY` must be manually mapped to `HAL_MAX_DELAY` (-1) to avoid an immediate 
+     * timeout which could cause a TWDT crash.
+     */
     uint32_t timeout_ms;
     if (timeout == portMAX_DELAY) {
         timeout_ms = -1; // portMAX_DELAY maps to HAL_MAX_DELAY

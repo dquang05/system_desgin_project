@@ -1,8 +1,17 @@
+/**
+ * @file tb6612_encoder.cpp
+ * @brief Implementation of the TB6612 motor driver and PCNT encoder.
+ */
 #include "tb6612_encoder.hpp"
 #include "esp_timer.h"
 #include "esp_log.h"
 
 #define CHECK_RET(x) do { esp_err_t _err = (x); if (_err != ESP_OK) return _err; } while(0)
+
+/** @brief MCPWM Timer Resolution in Hz (1MHz) */
+constexpr uint32_t TIMER_RESOLUTION_HZ = 1000000;
+/** @brief Microseconds in a minute for RPM calculations */
+constexpr int64_t US_PER_MINUTE = 60000000LL;
 
 static const char __attribute__((unused)) *TAG = "TB6612_ENC";
 
@@ -63,11 +72,11 @@ esp_err_t Tb6612Encoder::init(const tb6612_config_t& config) {
     CHECK_RET(gpio_set_level(static_cast<gpio_num_t>(config.in2_gpio), 0));
 
     // 2. Initialize MCPWM v5 for PWM generation
-    _pwm_period_ticks = 1000000 / config.pwm_freq_hz; // 1MHz resolution baseline
+    _pwm_period_ticks = TIMER_RESOLUTION_HZ / config.pwm_freq_hz; // 1MHz resolution baseline
     mcpwm_timer_config_t timer_config = {};
     timer_config.group_id = 0;
     timer_config.clk_src = MCPWM_TIMER_CLK_SRC_DEFAULT;
-    timer_config.resolution_hz = 1000000;
+    timer_config.resolution_hz = TIMER_RESOLUTION_HZ;
     timer_config.count_mode = MCPWM_TIMER_COUNT_MODE_UP;
     timer_config.period_ticks = _pwm_period_ticks;
     CHECK_RET(mcpwm_new_timer(&timer_config, &_timer));
@@ -182,7 +191,13 @@ esp_err_t Tb6612Encoder::get_pulse_count(int64_t& out_pulse_count) {
     int64_t accum1, accum2;
     int current_count = 0;
     
-    // Double-read loop (Optimistic Locking) to prevent race condition 
+    /**
+     * @note Double-Read Optimistic Locking.
+     * We need to read both the software accumulator (updated in ISR) and the 
+     * hardware PCNT counter atomically. Since an ISR can fire and change the 
+     * accumulator while we read the hardware counter, we use a do-while loop 
+     * to check if the accumulator changed during our read. If it did, we retry.
+     */
     do {
         portENTER_CRITICAL(&_spinlock);
         accum1 = _accumulated_pulses;
@@ -210,7 +225,7 @@ esp_err_t Tb6612Encoder::get_current_rpm(int64_t current_pulses, int64_t last_pu
     int64_t d_pulses = current_pulses - last_pulses; // Signed calculation for reverse rotation
 
     // Formula: rpm = (d_pulses / ppr) / (delta_time_us / 60,000,000 us)
-    out_rpm = static_cast<float>(d_pulses * 60000000LL) / static_cast<float>(_encoder_ppr * delta_time_us);
+    out_rpm = static_cast<float>(d_pulses * US_PER_MINUTE) / static_cast<float>(_encoder_ppr * delta_time_us);
 
     return ESP_OK;
 }

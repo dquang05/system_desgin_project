@@ -1,3 +1,10 @@
+/**
+ * @file telemetry_task.cpp
+ * @brief FreeRTOS task for sending telemetry data over UDP.
+ * 
+ * Packages the robot's current state (RPM, PWM, encoder values, ADC, loadcell)
+ * into a JSON string and sends it via Wi-Fi to a ground station for logging.
+ */
 #include "../include/telemetry_task.hpp"
 #include "../include/shared_state.hpp"
 #include "../include/main.hpp"
@@ -7,6 +14,14 @@
 
 extern wifi_manager::WifiManager wifi;
 
+/**
+ * @brief Main telemetry task routine.
+ * 
+ * Runs at a 20Hz frequency. Takes an atomic snapshot of the shared state,
+ * serializes it to a JSON string, and sends it over UDP.
+ * 
+ * @param pvParameters Pointer to the global SharedRobotState.
+ */
 void telemetry_task_routine(void *pvParameters) {
     SharedRobotState* state = static_cast<SharedRobotState*>(pvParameters);
     const TickType_t freq_ticks = pdMS_TO_TICKS(50); // 20Hz Logging Rate
@@ -21,9 +36,10 @@ void telemetry_task_routine(void *pvParameters) {
         portEXIT_CRITICAL(&state->spinlock);
 
         // Serialize data
+        // Optimization: Use integer literal (1000) for division instead of 1000ULL
         int len = snprintf(json_buf, sizeof(json_buf),
             "{\"ts\":%lu,\"enc\":[%lld,%lld],\"pwm\":[%.2f,%.2f],\"adc\":[%lu,%lu,%lu,%lu,%lu],\"rpm_tgt\":[%.2f,%.2f],\"rpm_act\":[%.2f,%.2f],\"weight\":%.2f,\"pid\":{\"L\":[%.3f,%.3f,%.3f],\"R\":[%.3f,%.3f,%.3f],\"T\":[%.3f,%.3f,%.3f]}}",
-            (uint32_t)(esp_timer_get_time() / 1000ULL),
+            (uint32_t)(esp_timer_get_time() / 1000),
             local_state.encoder_left, local_state.encoder_right,
             local_state.pwm_left, local_state.pwm_right,
             local_state.adc_raw[0], local_state.adc_raw[1],

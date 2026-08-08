@@ -1,3 +1,7 @@
+/**
+ * @file adc_dma.hpp
+ * @brief Zero-queue ADC DMA driver for continuous sampling.
+ */
 #pragma once
 
 #include <freertos/FreeRTOS.h>
@@ -10,6 +14,9 @@
 #define PIN_ADC_SENSOR_03 ADC_CHANNEL_6 // GPIO34
 #define PIN_ADC_SENSOR_04 ADC_CHANNEL_7 // GPIO35
 #define PIN_ADC_SENSOR_05 ADC_CHANNEL_0 // GPIO36
+
+/** @brief Maximum internal DMA store buffer size */
+constexpr uint32_t ADC_MAX_STORE_BUF_SIZE = 1024;
 
 /**
  * @brief Enum defining logical IDs for analog sensors.

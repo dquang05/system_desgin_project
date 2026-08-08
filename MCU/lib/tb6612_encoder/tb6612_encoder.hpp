@@ -1,3 +1,7 @@
+/**
+ * @file tb6612_encoder.hpp
+ * @brief TB6612FNG Motor Driver and Quadrature Encoder control library.
+ */
 #pragma once
 
 #include <stdint.h>

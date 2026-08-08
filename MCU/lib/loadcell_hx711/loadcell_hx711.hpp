@@ -1,7 +1,15 @@
+/**
+ * @file loadcell_hx711.hpp
+ * @brief HX711 Loadcell Amplifier Library.
+ */
 #pragma once
 
 #include <cstdint>
+#include <cstdint>
 #include "driver/gpio.h"
+
+/** @brief Default timeout in microseconds for waiting on DT */
+constexpr uint64_t HX711_TIMEOUT_US = 150000;
 
 class LoadcellHX711 {
 public:

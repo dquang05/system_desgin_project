@@ -1,3 +1,10 @@
+/**
+ * @file motion_task.cpp
+ * @brief FreeRTOS task for motion control, sensor reading, and PID execution.
+ * 
+ * This module integrates the encoder readings, line sensor data, and executes
+ * the velocity and steering PID controllers to drive the motors.
+ */
 #include "../include/motion_task.hpp"
 #include "../include/shared_state.hpp"
 #include "../include/line_tracker.hpp"
@@ -5,11 +12,25 @@
 #include "../lib/velocity_pid/velocity_pid.hpp"
 #include <esp_timer.h>
 
+/** @brief Decimation factor to run Line Tracker PID at a lower frequency than the main loop */
+constexpr uint32_t PID_EXEC_DECIMATION = 5; 
+/** @brief The outer loop dt based on decimation (5 * 10ms = 50ms) */
+constexpr float PID_OUTER_DT_S = 0.05f;
+
 extern Tb6612Encoder motor_left;
 extern Tb6612Encoder motor_right;
 extern VelocityPid pid_left;
 extern VelocityPid pid_right;
 
+/**
+ * @brief Main motion control task routine.
+ * 
+ * Runs at a strict 100Hz frequency. Reads encoders, calculates instant RPM, 
+ * applies EMA filtering for quantization noise reduction, runs Line Tracking PID
+ * at 20Hz, and updates Motor Velocity PIDs.
+ * 
+ * @param pvParameters Pointer to the global SharedRobotState.
+ */
 void motion_task_routine(void *pvParameters) {
     SharedRobotState* state = static_cast<SharedRobotState*>(pvParameters);
     TickType_t last_wake_time = xTaskGetTickCount();
@@ -45,14 +66,20 @@ void motion_task_routine(void *pvParameters) {
             motor_right.get_current_rpm(current_pulse_r, last_pulse_r, delta_time_us, raw_rpm_r);
 
             // JGB37-520 Hardware Quadrature Scaling (x4 division)
-            float instant_rpm_l = raw_rpm_l / 4.0f;
-            float instant_rpm_r = raw_rpm_r / 4.0f;
+            // Optimized: Multiplication by 0.25f is faster than division by 4.0f
+            float instant_rpm_l = raw_rpm_l * 0.25f;
+            float instant_rpm_r = raw_rpm_r * 0.25f;
 
-            // --- EMA LOW-PASS FILTER FOR QUANTIZATION NOISE REDUCTION ---
-            // At 100Hz sampling rate (10ms), a 1-pulse encoder difference can cause an RPM jump of ~4.5 RPM
+            /**
+             * @note EMA LOW-PASS FILTER FOR QUANTIZATION NOISE REDUCTION
+             * At 100Hz sampling rate (10ms dt), a 1-pulse encoder difference can cause 
+             * an RPM jump of ~4.5 RPM due to quantization. The EMA filter smooths this out.
+             * Alpha is the filter coefficient (smaller = smoother but higher phase lag).
+             * 0.15 is chosen as an optimal balance for this encoder's PPR.
+             */
             static float filtered_rpm_l = 0.0f;
             static float filtered_rpm_r = 0.0f;
-            const float ALPHA = 0.15f; // Filter coefficient. Smaller = smoother but higher phase lag (0.1 -> 0.3 is optimal)
+            constexpr float ALPHA = 0.15f; 
 
             filtered_rpm_l = (ALPHA * instant_rpm_l) + ((1.0f - ALPHA) * filtered_rpm_l);
             filtered_rpm_r = (ALPHA * instant_rpm_r) + ((1.0f - ALPHA) * filtered_rpm_r);
@@ -73,13 +100,10 @@ void motion_task_routine(void *pvParameters) {
             phys_cfg = state->physical_config;
             portEXIT_CRITICAL(&state->spinlock);
 
-            // Execute Line Tracking PID every 5 ticks (50ms / 20Hz)
-            if (loop_counter % 5 == 0) {
-                // Ensure outer_dt_s reflects the actual period of the outer loop.
-                // Normally it is 5 * 10ms = 50ms (0.05s)
-                float outer_dt_s = 0.05f; 
+            // Execute Line Tracking PID every PID_EXEC_DECIMATION ticks (50ms / 20Hz)
+            if (loop_counter % PID_EXEC_DECIMATION == 0) {
                 float e2 = line_tracker.compute_e2(sensor_snapshot, calib);
-                line_tracker.compute_target_rpm(e2, outer_dt_s, phys_cfg, target_rpm_l, target_rpm_r);
+                line_tracker.compute_target_rpm(e2, PID_OUTER_DT_S, phys_cfg, target_rpm_l, target_rpm_r);
             }
 
             pid_left.set_target_velocity(target_rpm_l);

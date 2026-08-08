@@ -1,3 +1,11 @@
+/**
+ * @file main.cpp
+ * @brief Main entry point and orchestrator for the ESP32 AMR firmware.
+ * 
+ * This file contains the FreeRTOS task definitions, global state management, 
+ * and hardware initialization. It acts as the central coordinator for all 
+ * decoupled library modules.
+ */
 #include <esp_log.h>
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
@@ -61,6 +69,14 @@ VelocityPid pid_left;
 VelocityPid pid_right;
 LoadcellHX711 loadcell(PIN_LOADCELL_DT, PIN_LOADCELL_SCK);
 
+/**
+ * @brief ADC DMA Polling Task.
+ * 
+ * Continuously polls the ADC DMA buffer and updates the global state safely.
+ * This runs on Core 1 with very high priority (6) to prevent buffer overflows.
+ * 
+ * @param pvParameters Pointer to the global SharedRobotState.
+ */
 void adc_task(void *pvParameters) {
   SharedRobotState *state = static_cast<SharedRobotState *>(pvParameters);
   ESP_LOGI(TAG, "ADC Task Started");
@@ -79,6 +95,14 @@ void adc_task(void *pvParameters) {
   }
 }
 
+/**
+ * @brief HX711 Loadcell Task.
+ * 
+ * Polls the HX711 sensor for weight data at a defined interval and updates the global state.
+ * Runs on Core 1 with medium priority (3).
+ * 
+ * @param pvParameters Pointer to the global SharedRobotState.
+ */
 void loadcell_task(void *pvParameters) {
   SharedRobotState *state = static_cast<SharedRobotState *>(pvParameters);
   ESP_LOGI(TAG, "Loadcell Task Started");
@@ -94,6 +118,14 @@ void loadcell_task(void *pvParameters) {
   }
 }
 
+/**
+ * @brief Wi-Fi Toggle Task.
+ * 
+ * Monitors a physical switch to toggle Wi-Fi connection on/off dynamically.
+ * Runs on Core 1 with low priority (2).
+ * 
+ * @param pvParameters Not used.
+ */
 void wifi_toggle_task(void *pvParameters) {
   gpio_config_t io_conf = {};
   io_conf.pin_bit_mask = (1ULL << PIN_WIFI_SWITCH);
@@ -125,6 +157,11 @@ void wifi_toggle_task(void *pvParameters) {
   }
 }
 
+/**
+ * @brief Loads PID and physical parameters from NVS flash memory.
+ * 
+ * @param state Reference to the global SharedRobotState where config will be stored.
+ */
 void load_nvs_params(SharedRobotState &state) {
     nvs_handle_t my_handle;
     esp_err_t err = nvs_open("storage", NVS_READONLY, &my_handle);
@@ -143,6 +180,11 @@ void load_nvs_params(SharedRobotState &state) {
     nvs_close(my_handle);
 }
 
+/**
+ * @brief Saves the current PID and physical parameters to NVS flash memory.
+ * 
+ * @param state Reference to the global SharedRobotState containing the config.
+ */
 void save_nvs_params(const SharedRobotState &state) {
     nvs_handle_t my_handle;
     esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
@@ -161,6 +203,20 @@ void save_nvs_params(const SharedRobotState &state) {
     nvs_close(my_handle);
 }
 
+/**
+ * @brief UDP Receiver Task for remote PID tuning.
+ * 
+ * Listens for JSON-formatted UDP packets to update PID tuning dynamically in RAM,
+ * or save the current configuration to NVS. Runs on Core 0.
+ * 
+ * @note Dynamic Allocation Exception: This task uses `cJSON_Parse` which performs
+ *       `malloc()` internally. Although dynamic allocation is generally forbidden
+ *       in continuous loops by project rules, it is permitted here because this task 
+ *       only executes its allocation path upon receiving specific manual tuning packets,
+ *       which occurs very rarely. 
+ * 
+ * @param pvParameters Pointer to the global SharedRobotState.
+ */
 void udp_receiver_task(void *pvParameters) {
     SharedRobotState *state = static_cast<SharedRobotState *>(pvParameters);
     int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
@@ -204,27 +260,27 @@ void udp_receiver_task(void *pvParameters) {
         cJSON *cmd = cJSON_GetObjectItemCaseSensitive(json, "cmd");
         if (cJSON_IsString(cmd) && (cmd->valuestring != NULL)) {
             if (strcmp(cmd->valuestring, "tune") == 0) {
-                cJSON *pid_L = cJSON_GetObjectItemCaseSensitive(json, "pid_L");
-                cJSON *pid_R = cJSON_GetObjectItemCaseSensitive(json, "pid_R");
-                cJSON *pid_T = cJSON_GetObjectItemCaseSensitive(json, "pid_T");
+                cJSON *pid_l = cJSON_GetObjectItemCaseSensitive(json, "pid_L");
+                cJSON *pid_r = cJSON_GetObjectItemCaseSensitive(json, "pid_R");
+                cJSON *pid_t = cJSON_GetObjectItemCaseSensitive(json, "pid_T");
 
                 portENTER_CRITICAL(&state->spinlock);
-                if (cJSON_IsArray(pid_L) && cJSON_GetArraySize(pid_L) == 3) {
-                    state->physical_config.kp_l = cJSON_GetArrayItem(pid_L, 0)->valuedouble;
-                    state->physical_config.ki_l = cJSON_GetArrayItem(pid_L, 1)->valuedouble;
-                    state->physical_config.kd_l = cJSON_GetArrayItem(pid_L, 2)->valuedouble;
+                if (cJSON_IsArray(pid_l) && cJSON_GetArraySize(pid_l) == 3) {
+                    state->physical_config.kp_l = cJSON_GetArrayItem(pid_l, 0)->valuedouble;
+                    state->physical_config.ki_l = cJSON_GetArrayItem(pid_l, 1)->valuedouble;
+                    state->physical_config.kd_l = cJSON_GetArrayItem(pid_l, 2)->valuedouble;
                     pid_left.set_tunings(state->physical_config.kp_l, state->physical_config.ki_l, state->physical_config.kd_l);
                 }
-                if (cJSON_IsArray(pid_R) && cJSON_GetArraySize(pid_R) == 3) {
-                    state->physical_config.kp_r = cJSON_GetArrayItem(pid_R, 0)->valuedouble;
-                    state->physical_config.ki_r = cJSON_GetArrayItem(pid_R, 1)->valuedouble;
-                    state->physical_config.kd_r = cJSON_GetArrayItem(pid_R, 2)->valuedouble;
+                if (cJSON_IsArray(pid_r) && cJSON_GetArraySize(pid_r) == 3) {
+                    state->physical_config.kp_r = cJSON_GetArrayItem(pid_r, 0)->valuedouble;
+                    state->physical_config.ki_r = cJSON_GetArrayItem(pid_r, 1)->valuedouble;
+                    state->physical_config.kd_r = cJSON_GetArrayItem(pid_r, 2)->valuedouble;
                     pid_right.set_tunings(state->physical_config.kp_r, state->physical_config.ki_r, state->physical_config.kd_r);
                 }
-                if (cJSON_IsArray(pid_T) && cJSON_GetArraySize(pid_T) == 3) {
-                    state->physical_config.kp = cJSON_GetArrayItem(pid_T, 0)->valuedouble;
-                    state->physical_config.kd = cJSON_GetArrayItem(pid_T, 1)->valuedouble;
-                    state->physical_config.pid_tau = cJSON_GetArrayItem(pid_T, 2)->valuedouble;
+                if (cJSON_IsArray(pid_t) && cJSON_GetArraySize(pid_t) == 3) {
+                    state->physical_config.kp = cJSON_GetArrayItem(pid_t, 0)->valuedouble;
+                    state->physical_config.kd = cJSON_GetArrayItem(pid_t, 1)->valuedouble;
+                    state->physical_config.pid_tau = cJSON_GetArrayItem(pid_t, 2)->valuedouble;
                 }
                 portEXIT_CRITICAL(&state->spinlock);
                 ESP_LOGI(TAG, "Applied new PID tunings to RAM.");
@@ -240,6 +296,11 @@ void udp_receiver_task(void *pvParameters) {
     }
 }
 
+/**
+ * @brief Application Main Entry Point.
+ * 
+ * Initializes NVS, Wi-Fi, Drivers, and orchestrates the creation of all FreeRTOS tasks.
+ */
 extern "C" void app_main() {
   ESP_LOGI(TAG, "Initializing Orchestrator...");
 
