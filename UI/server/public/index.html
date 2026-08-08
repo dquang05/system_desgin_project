@@ -20,6 +20,7 @@
                 <button class="tab-btn active" data-target="tab-main">Main Logs</button>
                 <button class="tab-btn" data-target="tab-adc">ADC Chart</button>
                 <button class="tab-btn" data-target="tab-motor">Motor Control</button>
+                <button class="tab-btn" data-target="tab-tuning">Live Tuning</button>
             </div>
 
             <div class="status-indicator">
@@ -58,6 +59,95 @@
             <div id="tab-motor" class="tab-content">
                 <div id="motor-container" class="motor-container">
                     <!-- Managed by motorManager.js -->
+                </div>
+            </div>
+
+            <!-- Live Tuning Tab -->
+            <div id="tab-tuning" class="tab-content">
+                <div class="tuning-container">
+                    <div class="tuning-grid">
+                        
+                        <!-- Left Motor Tuning -->
+                        <div class="tuning-card">
+                            <h3>Left Motor</h3>
+                            <div class="tuning-row header">
+                                <span>Param</span>
+                                <span>Active</span>
+                                <span>New</span>
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Kp</span>
+                                <span class="tuning-active" id="active-kp-l">0.000</span>
+                                <input type="number" id="input-kp-l" step="0.001" value="0.000">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Ki</span>
+                                <span class="tuning-active" id="active-ki-l">0.000</span>
+                                <input type="number" id="input-ki-l" step="0.001" value="0.000">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Kd</span>
+                                <span class="tuning-active" id="active-kd-l">0.000</span>
+                                <input type="number" id="input-kd-l" step="0.001" value="0.000">
+                            </div>
+                        </div>
+
+                        <!-- Right Motor Tuning -->
+                        <div class="tuning-card">
+                            <h3>Right Motor</h3>
+                            <div class="tuning-row header">
+                                <span>Param</span>
+                                <span>Active</span>
+                                <span>New</span>
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Kp</span>
+                                <span class="tuning-active" id="active-kp-r">0.000</span>
+                                <input type="number" id="input-kp-r" step="0.001" value="0.000">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Ki</span>
+                                <span class="tuning-active" id="active-ki-r">0.000</span>
+                                <input type="number" id="input-ki-r" step="0.001" value="0.000">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Kd</span>
+                                <span class="tuning-active" id="active-kd-r">0.000</span>
+                                <input type="number" id="input-kd-r" step="0.001" value="0.000">
+                            </div>
+                        </div>
+
+                        <!-- Line Tracker Tuning -->
+                        <div class="tuning-card">
+                            <h3>Line Tracker</h3>
+                            <div class="tuning-row header">
+                                <span>Param</span>
+                                <span>Active</span>
+                                <span>New</span>
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Kp</span>
+                                <span class="tuning-active" id="active-kp-t">0.000</span>
+                                <input type="number" id="input-kp-t" step="0.001" value="0.000">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Ki</span>
+                                <span class="tuning-active" id="active-ki-t">0.000</span>
+                                <input type="number" id="input-ki-t" step="0.001" value="0.000">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Kd</span>
+                                <span class="tuning-active" id="active-kd-t">0.000</span>
+                                <input type="number" id="input-kd-t" step="0.001" value="0.000">
+                            </div>
+                        </div>
+
+                    </div>
+                    
+                    <div class="tuning-actions">
+                        <button id="btn-tune-test" class="btn primary btn-large">Test Tune</button>
+                        <button id="btn-tune-save" class="btn danger btn-large">Save to Flash</button>
+                    </div>
                 </div>
             </div>
         </div>

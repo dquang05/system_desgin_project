@@ -1,18 +1,17 @@
 #include "../include/telemetry_task.hpp"
 #include "../include/shared_state.hpp"
+#include "../include/main.hpp"
 #include "../lib/wifi_manager/wifi_manager.hpp"
 #include <esp_timer.h>
 #include <cstdio>
 
 extern wifi_manager::WifiManager wifi;
-extern const char* UDP_TARGET_IP;
-extern const uint16_t UDP_TARGET_PORT;
 
 void telemetry_task_routine(void *pvParameters) {
     SharedRobotState* state = static_cast<SharedRobotState*>(pvParameters);
     const TickType_t freq_ticks = pdMS_TO_TICKS(50); // 20Hz Logging Rate
     TickType_t last_wake_time = xTaskGetTickCount();
-    char json_buf[384];
+    char json_buf[512];
 
     while (true) {
         // Read isolated snapshot
@@ -23,7 +22,7 @@ void telemetry_task_routine(void *pvParameters) {
 
         // Serialize data
         int len = snprintf(json_buf, sizeof(json_buf),
-            "{\"ts\":%lu,\"enc\":[%lld,%lld],\"pwm\":[%.2f,%.2f],\"adc\":[%lu,%lu,%lu,%lu,%lu],\"rpm_tgt\":[%.2f,%.2f],\"rpm_act\":[%.2f,%.2f],\"weight\":%.2f}",
+            "{\"ts\":%lu,\"enc\":[%lld,%lld],\"pwm\":[%.2f,%.2f],\"adc\":[%lu,%lu,%lu,%lu,%lu],\"rpm_tgt\":[%.2f,%.2f],\"rpm_act\":[%.2f,%.2f],\"weight\":%.2f,\"pid\":{\"L\":[%.3f,%.3f,%.3f],\"R\":[%.3f,%.3f,%.3f],\"T\":[%.3f,%.3f,%.3f]}}",
             (uint32_t)(esp_timer_get_time() / 1000ULL),
             local_state.encoder_left, local_state.encoder_right,
             local_state.pwm_left, local_state.pwm_right,
@@ -32,7 +31,10 @@ void telemetry_task_routine(void *pvParameters) {
             local_state.adc_raw[4],
             local_state.target_rpm_left, local_state.target_rpm_right,
             local_state.actual_rpm_left, local_state.actual_rpm_right,
-            local_state.loadcell_weight);
+            local_state.loadcell_weight,
+            local_state.physical_config.kp_l, local_state.physical_config.ki_l, local_state.physical_config.kd_l,
+            local_state.physical_config.kp_r, local_state.physical_config.ki_r, local_state.physical_config.kd_r,
+            local_state.physical_config.kp, local_state.physical_config.kd, local_state.physical_config.pid_tau);
 
         // Decoupled hardware transmission
         if (len > 0 && wifi.is_connected()) {

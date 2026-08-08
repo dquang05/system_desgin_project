@@ -4,6 +4,7 @@ import { SocketManager } from './socketManager.js';
 import { LogViewer } from './logViewer.js';
 import { ChartManager } from './chartManager.js';
 import { MotorManager } from './motorManager.js';
+import { TuningManager } from './tuningManager.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // UI Elements
@@ -21,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const logViewer = new LogViewer();
     const chartMgr = new ChartManager();
     const motorMgr = new MotorManager();
+    const tuningMgr = new TuningManager(socketMgr);
     
     chartMgr.startUpdateLoop();
 
@@ -43,6 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
         logViewer.addLog(logEntry);
         chartMgr.processLog(logEntry);
         motorMgr.processLog(logEntry);
+        tuningMgr.processLog(logEntry);
     });
 
     // Setup Global Buttons
@@ -66,6 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
             logViewer.setActive(targetId === 'tab-main');
             chartMgr.setActive(targetId === 'tab-adc');
             motorMgr.setActive(targetId === 'tab-motor');
+            tuningMgr.setActive(targetId === 'tab-tuning');
         });
     });
 });

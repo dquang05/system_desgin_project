@@ -8,8 +8,9 @@ float LineTracker::compute_e2(const uint32_t adc_raw[ROBOT_NUM_SENSORS], const L
 
     // Affine Transformation (Calibration)
     for (int i = 0; i < ROBOT_NUM_SENSORS; i++) {
-        float a_coeff = static_cast<float>(calib.y_max - calib.y_min) / 
-                        static_cast<float>(calib.x_max[i] - calib.x_min[i]);
+        float x_diff = static_cast<float>(calib.x_max[i] - calib.x_min[i]);
+        if (std::abs(x_diff) < 0.001f) x_diff = 1.0f; // Prevent div by zero
+        float a_coeff = static_cast<float>(calib.y_max - calib.y_min) / x_diff;
         
         // Clamp below to x_min to prevent negative values if raw < x_min
         float raw_clamped = std::max(static_cast<float>(adc_raw[i]), static_cast<float>(calib.x_min[i]));
@@ -31,12 +32,15 @@ float LineTracker::compute_e2(const uint32_t adc_raw[ROBOT_NUM_SENSORS], const L
 
 void LineTracker::compute_target_rpm(float e2, float dt_s, const RobotPhysicalConfig &cfg, float &out_rpm_l, float &out_rpm_r) {
     // PD Control with Derivative Filter
-    float delta_w = cfg.kp * e2 + 
-                    2.0f * cfg.kd * (e2 - _pre_e2) / (2.0f * cfg.pid_tau + dt_s) + 
-                    (2.0f * cfg.pid_tau - dt_s) * _pre_Dpart / (2.0f * cfg.pid_tau + dt_s);
+    float dt_tau = 2.0f * cfg.pid_tau + dt_s;
+    if (std::abs(dt_tau) < 0.001f) dt_tau = 1.0f; // Prevent div by zero
 
-    _pre_Dpart = 2.0f * cfg.kd * (e2 - _pre_e2) / (2.0f * cfg.pid_tau + dt_s) + 
-                 (2.0f * cfg.pid_tau - dt_s) * _pre_Dpart / (2.0f * cfg.pid_tau + dt_s);
+    float delta_w = cfg.kp * e2 + 
+                    2.0f * cfg.kd * (e2 - _pre_e2) / dt_tau + 
+                    (2.0f * cfg.pid_tau - dt_s) * _pre_Dpart / dt_tau;
+
+    _pre_Dpart = 2.0f * cfg.kd * (e2 - _pre_e2) / dt_tau + 
+                 (2.0f * cfg.pid_tau - dt_s) * _pre_Dpart / dt_tau;
 
     _pre_e2 = e2;
 
@@ -48,8 +52,11 @@ void LineTracker::compute_target_rpm(float e2, float dt_s, const RobotPhysicalCo
     // Calculate wheel velocities in m/s or rad/s?
     // In reference code: w_left = (V_REF - (L_WHEEL / 2.0f) * delta_w) / (D_WHEEL / 2.0f);
     // So target wheel angular velocity in rad/s:
-    float w_left_rads = (cfg.v_ref - (cfg.wheel_base_mm / 2.0f) * delta_w) / cfg.wheel_radius_mm;
-    float w_right_rads = (cfg.v_ref + (cfg.wheel_base_mm / 2.0f) * delta_w) / cfg.wheel_radius_mm;
+    float r = cfg.wheel_radius_mm;
+    if (std::abs(r) < 0.001f) r = 1.0f; // Prevent div by zero
+
+    float w_left_rads = (cfg.v_ref - (cfg.wheel_base_mm / 2.0f) * delta_w) / r;
+    float w_right_rads = (cfg.v_ref + (cfg.wheel_base_mm / 2.0f) * delta_w) / r;
 
     // Convert rad/s to RPM
     // RPM = rad/s * (60 / (2 * pi))

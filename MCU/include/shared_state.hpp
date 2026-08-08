@@ -17,9 +17,15 @@ struct RobotPhysicalConfig {
     float wheel_base_mm;
     float wheel_radius_mm;
     float v_ref;
-    float kp;
-    float kd;
-    float pid_tau;
+    float kp;      // Line tracker kp
+    float kd;      // Line tracker kd
+    float pid_tau; // Line tracker tau
+    float kp_l;    // Motor left kp
+    float ki_l;    // Motor left ki
+    float kd_l;    // Motor left kd
+    float kp_r;    // Motor right kp
+    float ki_r;    // Motor right ki
+    float kd_r;    // Motor right kd
 };
 
 struct SharedRobotState {

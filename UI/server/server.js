@@ -15,6 +15,7 @@ const HTTP_PORT = process.env.PORT || 3000;
 let udp_socket = null;
 let is_reconnecting = false;
 let reconnect_timer = null;
+let esp32_ip = null;
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -64,7 +65,11 @@ function start_udp_server() {
 
         // Backend event loop: Xử lý I/O mạng phi đồng bộ
         udp_socket.on('message', (msg, rinfo) => {
-            console.log(`Received UDP packet from ${rinfo.address}:${rinfo.port}`);
+            // Lưu lại IP của ESP32 để gửi lệnh tuning
+            esp32_ip = rinfo.address;
+            
+            // Xóa log rinfo để tránh log lặp (tùy chọn) hoặc giữ nguyên
+            // console.log(`Received UDP packet from ${rinfo.address}:${rinfo.port}`);
             try {
                 // Parse log, gửi realtime tới UI qua WebSockets
                 const logData = msg.toString('utf8');
@@ -98,6 +103,25 @@ io.on('connection', (socket) => {
     
     // Mặc định frontend khi mới vào web sẽ chưa tự động connect UDP
     socket.emit('status', 'disconnected');
+
+    socket.on('send_tune', (data) => {
+        if (esp32_ip && udp_socket) {
+            try {
+                const payload = JSON.stringify(data);
+                udp_socket.send(payload, 54322, esp32_ip, (err) => {
+                    if (err) {
+                        console.error('Failed to send tuning packet:', err);
+                    } else {
+                        console.log(`Sent tuning packet to ${esp32_ip}:54322`, payload);
+                    }
+                });
+            } catch (err) {
+                console.error('Error stringifying tuning payload', err);
+            }
+        } else {
+            console.warn('Cannot send tuning packet: ESP32 IP not known or UDP socket not open.');
+        }
+    });
 
     socket.on('command', (cmd) => {
         if (cmd === 'connect') {

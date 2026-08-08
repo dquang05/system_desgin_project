@@ -230,9 +230,8 @@ bool WifiManager::send_log_data(const char *ip, uint16_t port,
                    sizeof(dest_addr));
   if (err < 0) {
     ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
-    // Close socket on network error to force recreation on next attempt
-    close(_udp_sock);
-    _udp_sock = -1;
+    // Do not close socket on transient network errors (like ENOMEM) 
+    // to prevent overhead and resource exhaustion. Drop packet instead.
     return false;
   }
 
