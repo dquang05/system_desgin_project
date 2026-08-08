@@ -12,88 +12,101 @@ const io = new Server(server);
 const UDP_PORT = process.env.UDP_PORT || 54321;
 const HTTP_PORT = process.env.PORT || 3000;
 
-let udp_socket = null;
-let is_reconnecting = false;
-let reconnect_timer = null;
-let esp32_ip = null;
+let udpSocket = null;
+let isReconnecting = false;
+let reconnectTimer = null;
+let esp32Ip = null;
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Hàm dọn dẹp RAM & Giải phóng Socket triệt để
-function cleanup_resources() {
-    if (udp_socket) {
+/**
+ * Cleans up RAM and comprehensively releases the UDP Socket.
+ * Closes the socket to prevent memory leaks and "Address already in use" errors.
+ */
+function cleanupResources() {
+    if (udpSocket) {
         try {
-            // Đóng triệt để socket UDP để tránh rò rỉ và Address already in use
-            udp_socket.close();
+            udpSocket.close();
         } catch (err) {
             console.error('Error closing UDP socket:', err.message);
         }
-        udp_socket = null;
+        udpSocket = null;
     }
     
-    if (reconnect_timer) {
-        clearTimeout(reconnect_timer);
-        reconnect_timer = null;
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
     }
     
-    // Dọn dẹp biến toàn cục để phiên sau chạy sạch sẽ
-    is_reconnecting = false;
+    isReconnecting = false;
     console.log("Resources cleaned up");
 }
 
-function start_udp_server() {
-    if (udp_socket) return; // Không tạo trùng socket
+/**
+ * Initializes and starts the UDP server for receiving telemetry data.
+ * Implements self-recovery in case of errors.
+ */
+function startUdpServer() {
+    if (udpSocket) return; // Prevent duplicate socket creation
 
     try {
-        udp_socket = dgram.createSocket('udp4');
+        udpSocket = dgram.createSocket('udp4');
 
-        udp_socket.on('error', (err) => {
+        udpSocket.on('error', (err) => {
             console.error(`UDP server error:\n${err.stack}`);
-            cleanup_resources();
+            
+            // Handle EADDRINUSE specifically
+            if (err.code === 'EADDRINUSE') {
+                console.error(`Port ${UDP_PORT} is already in use.`);
+            }
+
+            cleanupResources();
             io.to('log_subscribers').emit('status', 'reconnecting'); 
             
-            // Self-recovery: Thử kết nối lại sau 3 giây
-            if (!is_reconnecting) {
-                is_reconnecting = true;
-                reconnect_timer = setTimeout(() => {
+            // Self-recovery: Attempt to reconnect after 3 seconds
+            if (!isReconnecting) {
+                isReconnecting = true;
+                reconnectTimer = setTimeout(() => {
                     console.log("Attempting to reconnect...");
-                    is_reconnecting = false;
-                    start_udp_server();
+                    isReconnecting = false;
+                    startUdpServer();
                 }, 3000);
             }
         });
 
-        // Backend event loop: Xử lý I/O mạng phi đồng bộ
-        udp_socket.on('message', (msg, rinfo) => {
-            // Lưu lại IP của ESP32 để gửi lệnh tuning
-            esp32_ip = rinfo.address;
+        // Backend event loop: Process asynchronous network I/O
+        udpSocket.on('message', (msg, rinfo) => {
+            // Store ESP32 IP to send tuning commands later
+            if (rinfo && rinfo.address) {
+                esp32Ip = rinfo.address;
+            }
             
-            // Xóa log rinfo để tránh log lặp (tùy chọn) hoặc giữ nguyên
-            // console.log(`Received UDP packet from ${rinfo.address}:${rinfo.port}`);
             try {
-                // Parse log, gửi realtime tới UI qua WebSockets
+                // Parse log, send realtime to UI via WebSockets
                 const logData = msg.toString('utf8');
+                const fromAddress = rinfo ? `${rinfo.address}:${rinfo.port}` : 'unknown';
+                
                 io.to('log_subscribers').emit('log', { 
                     timestamp: new Date().toLocaleTimeString(), 
                     data: logData, 
-                    from: `${rinfo.address}:${rinfo.port}` 
+                    from: fromAddress
                 });
             } catch (err) {
                 console.error("Malformed packet received", err.message);
             }
         });
 
-        udp_socket.on('listening', () => {
-            const address = udp_socket.address();
+        udpSocket.on('listening', () => {
+            const address = udpSocket.address();
             console.log(`UDP server listening ${address.address}:${address.port}`);
-            is_reconnecting = false;
+            isReconnecting = false;
             io.to('log_subscribers').emit('status', 'listening');
         });
 
-        udp_socket.bind(UDP_PORT);
+        udpSocket.bind(UDP_PORT);
     } catch (err) {
         console.error("Failed to create UDP socket", err.message);
-        cleanup_resources();
+        cleanupResources();
         io.to('log_subscribers').emit('status', 'reconnecting');
     }
 }
@@ -101,37 +114,44 @@ function start_udp_server() {
 io.on('connection', (socket) => {
     console.log('Frontend connected');
     
-    // Mặc định frontend khi mới vào web sẽ chưa tự động connect UDP
+    // By default, the frontend is disconnected from UDP when first visiting the web
     socket.emit('status', 'disconnected');
 
+    /**
+     * Listen for tuning commands from the frontend and forward them to ESP32 via UDP.
+     */
     socket.on('send_tune', (data) => {
-        if (esp32_ip && udp_socket) {
+        if (esp32Ip && udpSocket) {
             try {
                 const payload = JSON.stringify(data);
-                udp_socket.send(payload, 54322, esp32_ip, (err) => {
+                udpSocket.send(payload, 54322, esp32Ip, (err) => {
                     if (err) {
                         console.error('Failed to send tuning packet:', err);
+                        socket.emit('error_msg', 'Failed to send tuning packet via UDP.');
                     } else {
-                        console.log(`Sent tuning packet to ${esp32_ip}:54322`, payload);
+                        console.log(`Sent tuning packet to ${esp32Ip}:54322`, payload);
                     }
                 });
             } catch (err) {
                 console.error('Error stringifying tuning payload', err);
+                socket.emit('error_msg', 'Error processing tuning data.');
             }
         } else {
             console.warn('Cannot send tuning packet: ESP32 IP not known or UDP socket not open.');
+            // Send error notification back to the frontend
+            socket.emit('error_msg', 'Cannot send tuning command. No connection to ESP32 yet (Unknown IP).');
         }
     });
 
     socket.on('command', (cmd) => {
         if (cmd === 'connect') {
             socket.join('log_subscribers');
-            if (udp_socket && !is_reconnecting) {
+            if (udpSocket && !isReconnecting) {
                 socket.emit('status', 'listening');
-            } else if (is_reconnecting) {
+            } else if (isReconnecting) {
                 socket.emit('status', 'reconnecting');
             } else {
-                start_udp_server();
+                startUdpServer();
             }
         } else if (cmd === 'disconnect') {
             socket.leave('log_subscribers');
@@ -146,16 +166,16 @@ io.on('connection', (socket) => {
 
 server.listen(HTTP_PORT, () => {
     console.log(`Web interface running at http://localhost:${HTTP_PORT}`);
-    // Luôn chạy ngầm UDP server từ đầu thay vì đợi frontend gọi
-    start_udp_server();
+    // Always run UDP server in the background instead of waiting for frontend call
+    startUdpServer();
 });
 
-// Bắt sự kiện OS để dọn dẹp RAM triệt để khi tắt process
+// Catch OS events to completely clean up RAM when process terminates
 process.on('SIGINT', () => {
-    cleanup_resources();
+    cleanupResources();
     process.exit();
 });
 process.on('SIGTERM', () => {
-    cleanup_resources();
+    cleanupResources();
     process.exit();
 });

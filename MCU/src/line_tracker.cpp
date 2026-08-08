@@ -32,15 +32,17 @@ float LineTracker::compute_e2(const uint32_t adc_raw[ROBOT_NUM_SENSORS], const L
 
 void LineTracker::compute_target_rpm(float e2, float dt_s, const RobotPhysicalConfig &cfg, float &out_rpm_l, float &out_rpm_r) {
     // PD Control with Derivative Filter
-    float dt_tau = 2.0f * cfg.pid_tau + dt_s;
+    // Enforce minimum tau to prevent Nyquist instability (ringing) when tau=0
+    float safe_tau = std::max(cfg.pid_tau, 0.01f);
+    float dt_tau = 2.0f * safe_tau + dt_s;
     if (std::abs(dt_tau) < 0.001f) dt_tau = 1.0f; // Prevent div by zero
 
     float delta_w = cfg.kp * e2 + 
                     2.0f * cfg.kd * (e2 - _pre_e2) / dt_tau + 
-                    (2.0f * cfg.pid_tau - dt_s) * _pre_Dpart / dt_tau;
+                    (2.0f * safe_tau - dt_s) * _pre_Dpart / dt_tau;
 
     _pre_Dpart = 2.0f * cfg.kd * (e2 - _pre_e2) / dt_tau + 
-                 (2.0f * cfg.pid_tau - dt_s) * _pre_Dpart / dt_tau;
+                 (2.0f * safe_tau - dt_s) * _pre_Dpart / dt_tau;
 
     _pre_e2 = e2;
 

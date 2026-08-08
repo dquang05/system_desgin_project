@@ -1,5 +1,6 @@
-// chartManager.js
-
+/**
+ * Manages the ADC telemetry chart using Chart.js.
+ */
 export class ChartManager {
     constructor() {
         this.ctx = document.getElementById('adc-chart').getContext('2d');
@@ -54,32 +55,40 @@ export class ChartManager {
             }
         });
         
-        // Use a flag to throttle Chart.js updates if data comes in too fast
         this.needsUpdate = false;
-        this.updateLoop = this.updateLoop.bind(this);
+        this.renderPending = false;
+        
+        // Bind the render loop to this instance
+        this.renderLoop = this.renderLoop.bind(this);
     }
     
+    /**
+     * Sets the active state of the chart tab. If active and updates are pending, it triggers a render.
+     * @param {boolean} active - True if the tab is visible.
+     */
     setActive(active) {
         this.isActive = active;
-        if (active && this.needsUpdate) {
-            this.chart.update();
-            this.needsUpdate = false;
+        if (active && this.needsUpdate && !this.renderPending) {
+            this.renderPending = true;
+            requestAnimationFrame(this.renderLoop);
         }
     }
     
-    updateLoop() {
+    /**
+     * The render loop executed via requestAnimationFrame to update Chart.js.
+     */
+    renderLoop() {
         if (this.isActive && this.needsUpdate) {
             this.chart.update();
             this.needsUpdate = false;
         }
-        // Throttle updates to ~30fps for the chart
-        setTimeout(this.updateLoop, 33);
+        this.renderPending = false;
     }
 
-    startUpdateLoop() {
-        this.updateLoop();
-    }
-
+    /**
+     * Processes incoming log data and updates the chart datasets.
+     * @param {Object} logEntry - The log object containing timestamp and data.
+     */
     processLog(logEntry) {
         try {
             const obj = JSON.parse(logEntry.data);
@@ -102,6 +111,12 @@ export class ChartManager {
                 }
                 
                 this.needsUpdate = true;
+                
+                // Trigger render if active and no render is pending
+                if (this.isActive && !this.renderPending) {
+                    this.renderPending = true;
+                    requestAnimationFrame(this.renderLoop);
+                }
             }
         } catch (e) {
             // Ignore non-JSON or improperly formatted logs

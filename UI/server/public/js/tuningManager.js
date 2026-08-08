@@ -1,6 +1,13 @@
 // tuningManager.js
 
+/**
+ * Manages the tuning parameters UI and communicates tuning commands to the backend.
+ */
 export class TuningManager {
+    /**
+     * Initializes the TuningManager, binds UI elements, and sets up event listeners.
+     * @param {SocketManager} socketMgr - Instance of SocketManager for communication.
+     */
     constructor(socketMgr) {
         this.socketMgr = socketMgr;
         
@@ -41,6 +48,7 @@ export class TuningManager {
         // State
         this.isActive = false;
         this.needsUpdate = false;
+        this.renderPending = false; // Prevents multiple requestAnimationFrame calls in the same frame
         
         this.currentPid = {
             L: [0, 0, 0],
@@ -56,13 +64,22 @@ export class TuningManager {
         this.btnSave.addEventListener('click', () => this.sendSaveCommand());
     }
     
+    /**
+     * Sets the active state of the tuning tab. Triggers rendering if needed.
+     * @param {boolean} active - True if the tab is currently visible.
+     */
     setActive(active) {
         this.isActive = active;
-        if (active && this.needsUpdate) {
+        if (active && this.needsUpdate && !this.renderPending) {
+            this.renderPending = true;
             requestAnimationFrame(this.renderLoop);
         }
     }
     
+    /**
+     * Processes incoming log data to update active PID parameters.
+     * @param {Object} logEntry - The log object.
+     */
     processLog(logEntry) {
         try {
             const obj = JSON.parse(logEntry.data);
@@ -72,7 +89,8 @@ export class TuningManager {
                 if (obj.pid.T && Array.isArray(obj.pid.T)) this.currentPid.T = obj.pid.T;
                 
                 this.needsUpdate = true;
-                if (this.isActive) {
+                if (this.isActive && !this.renderPending) {
+                    this.renderPending = true;
                     requestAnimationFrame(this.renderLoop);
                 }
             }
@@ -81,7 +99,12 @@ export class TuningManager {
         }
     }
     
+    /**
+     * Updates the DOM with the current active PID values.
+     */
     renderLoop() {
+        this.renderPending = false;
+        
         if (!this.isActive || !this.needsUpdate) return;
         
         this.activeEls.kpL.textContent = this.currentPid.L[0].toFixed(3);
@@ -99,6 +122,9 @@ export class TuningManager {
         this.needsUpdate = false;
     }
     
+    /**
+     * Sends the updated tuning parameters (Kp, Ki, Kd) for motors and tracker to the backend.
+     */
     sendTuneCommand() {
         const payload = {
             cmd: 'tune',
@@ -124,6 +150,9 @@ export class TuningManager {
         }
     }
     
+    /**
+     * Sends a command to save the current tuning parameters to flash memory on the ESP32.
+     */
     sendSaveCommand() {
         const payload = {
             cmd: 'save'

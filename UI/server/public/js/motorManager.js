@@ -1,6 +1,12 @@
 // motorManager.js
 
+/**
+ * Manages the motor telemetry and UI rendering, including PWM bars and charts.
+ */
 export class MotorManager {
+    /**
+     * Initializes the MotorManager, builds the DOM, and sets up charts.
+     */
     constructor() {
         this.container = document.getElementById('motor-container');
         this.isActive = false;
@@ -19,6 +25,7 @@ export class MotorManager {
         };
         
         this.needsUpdate = false;
+        this.renderPending = false; // Prevents multiple requestAnimationFrame calls in the same frame
         
         // Chart configuration
         this.maxDataPoints = 100;
@@ -33,6 +40,9 @@ export class MotorManager {
         this.renderLoop = this.renderLoop.bind(this);
     }
     
+    /**
+     * Builds the inner HTML structure for the motor container.
+     */
     buildUI() {
         this.container.innerHTML = `
             <div class="motor-grid">
@@ -117,6 +127,13 @@ export class MotorManager {
         };
     }
 
+    /**
+     * Helper to create standard chart configurations.
+     * @param {string} yLabel - Label for the Y axis.
+     * @param {number} [ySuggestedMax] - Optional maximum value for the Y axis.
+     * @param {Array} datasets - Array of dataset configuration objects.
+     * @returns {Object} Chart.js configuration object.
+     */
     createChartConfig(yLabel, ySuggestedMax, datasets) {
         return {
             type: 'line',
@@ -158,6 +175,9 @@ export class MotorManager {
         };
     }
 
+    /**
+     * Initializes the Chart.js instances for motors and loadcell.
+     */
     initCharts() {
         const ctxL = document.getElementById('motor-l-chart').getContext('2d');
         this.chartL = new Chart(ctxL, this.createChartConfig('RPM', undefined, [
@@ -177,13 +197,22 @@ export class MotorManager {
         ]));
     }
     
+    /**
+     * Sets the active state. Triggers rendering if the tab becomes active.
+     * @param {boolean} active - True if the motor tab is visible.
+     */
     setActive(active) {
         this.isActive = active;
-        if (active && this.needsUpdate) {
+        if (active && this.needsUpdate && !this.renderPending) {
+            this.renderPending = true;
             requestAnimationFrame(this.renderLoop);
         }
     }
     
+    /**
+     * Processes incoming telemetry and updates the internal state.
+     * @param {Object} logEntry - The log data containing telemetry.
+     */
     processLog(logEntry) {
         try {
             const obj = JSON.parse(logEntry.data);
@@ -226,7 +255,8 @@ export class MotorManager {
                 this.updateChartData(this.chartW, timeStr, [this.state.weight]);
 
                 this.needsUpdate = true;
-                if (this.isActive) {
+                if (this.isActive && !this.renderPending) {
+                    this.renderPending = true;
                     requestAnimationFrame(this.renderLoop);
                 }
             }
@@ -235,6 +265,12 @@ export class MotorManager {
         }
     }
 
+    /**
+     * Updates data in a chart instance and shifts the dataset if it exceeds max size.
+     * @param {Object} chart - Chart.js instance.
+     * @param {string} label - The label (timestamp).
+     * @param {Array} dataArr - Array of new values matching the datasets.
+     */
     updateChartData(chart, label, dataArr) {
         chart.data.labels.push(label);
         for (let i = 0; i < dataArr.length; i++) {
@@ -249,6 +285,13 @@ export class MotorManager {
         }
     }
     
+    /**
+     * Updates the UI for the PWM bar to visually represent -100% to 100%.
+     * @param {HTMLElement} valElem - Element displaying the PWM text.
+     * @param {HTMLElement} negElem - Element for the negative fill.
+     * @param {HTMLElement} posElem - Element for the positive fill.
+     * @param {number} value - The PWM value.
+     */
     updatePWMBar(valElem, negElem, posElem, value) {
         // Clamp value between -100 and 100
         const clamped = Math.max(-100, Math.min(100, value));
@@ -263,7 +306,12 @@ export class MotorManager {
         }
     }
     
+    /**
+     * Renders the current state to the DOM and updates charts via requestAnimationFrame.
+     */
     renderLoop() {
+        this.renderPending = false;
+        
         if (!this.isActive || !this.needsUpdate) {
             return;
         }

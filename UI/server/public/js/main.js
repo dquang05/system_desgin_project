@@ -1,4 +1,7 @@
-// main.js
+/**
+ * Main application entry point.
+ * Initializes modules and sets up global UI event listeners.
+ */
 
 import { SocketManager } from './socketManager.js';
 import { LogViewer } from './logViewer.js';
@@ -24,8 +27,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const motorMgr = new MotorManager();
     const tuningMgr = new TuningManager(socketMgr);
     
-    chartMgr.startUpdateLoop();
-
     // Setup Socket Listeners
     socketMgr.onStatusChange((state) => {
         statusDot.className = 'dot';
@@ -46,6 +47,10 @@ document.addEventListener('DOMContentLoaded', () => {
         chartMgr.processLog(logEntry);
         motorMgr.processLog(logEntry);
         tuningMgr.processLog(logEntry);
+    });
+
+    socketMgr.onErrorMsg((msg) => {
+        alert(`Error: ${msg}`);
     });
 
     // Setup Global Buttons
