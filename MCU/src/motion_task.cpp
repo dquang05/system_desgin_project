@@ -7,15 +7,20 @@
  */
 #include "../include/motion_task.hpp"
 #include "../include/shared_state.hpp"
-#include "../include/line_tracker.hpp"
+#include "../include/main.hpp"
+#include "../include/motion_strategy.hpp"
+#include "../include/manual_control.hpp"
+#include "../include/autonomous_control.hpp"
 #include "../lib/tb6612_encoder/tb6612_encoder.hpp"
 #include "../lib/velocity_pid/velocity_pid.hpp"
 #include <esp_timer.h>
 
-/** @brief Decimation factor to run Line Tracker PID at a lower frequency than the main loop */
-constexpr uint32_t PID_EXEC_DECIMATION = 5; 
-/** @brief The outer loop dt based on decimation (5 * 10ms = 50ms) */
-constexpr float PID_OUTER_DT_S = 0.05f;
+#if CONTROL_MODE == 1
+static ManualControl motion_controller;
+#else
+static AutonomousControl motion_controller;
+#endif
+
 
 extern Tb6612Encoder motor_left;
 extern Tb6612Encoder motor_right;
@@ -43,7 +48,6 @@ void motion_task_routine(void *pvParameters) {
     motor_left.get_pulse_count(last_pulse_l);
     motor_right.get_pulse_count(last_pulse_r);
 
-    LineTracker line_tracker;
     uint32_t loop_counter = 0;
     float target_rpm_l = 0.0f;
     float target_rpm_r = 0.0f;
@@ -79,7 +83,7 @@ void motion_task_routine(void *pvParameters) {
              */
             static float filtered_rpm_l = 0.0f;
             static float filtered_rpm_r = 0.0f;
-            constexpr float ALPHA = 0.15f; 
+            constexpr float ALPHA = 1.0f; // EMA filter coefficient for quantization noise
 
             filtered_rpm_l = (ALPHA * instant_rpm_l) + ((1.0f - ALPHA) * filtered_rpm_l);
             filtered_rpm_r = (ALPHA * instant_rpm_r) + ((1.0f - ALPHA) * filtered_rpm_r);
@@ -87,24 +91,22 @@ void motion_task_routine(void *pvParameters) {
             float rpm_l = filtered_rpm_l;
             float rpm_r = filtered_rpm_r;
 
-            // Extract sensor data safely to make steering decisions
-            uint32_t sensor_snapshot[ROBOT_NUM_SENSORS];
-            LineSensorCalib calib;
-            RobotPhysicalConfig phys_cfg;
-
+            StateSnapshot snap;
             portENTER_CRITICAL(&state->spinlock);
             for (int i = 0; i < ROBOT_NUM_SENSORS; i++) {
-                sensor_snapshot[i] = state->adc_raw[i];
+                snap.adc_raw[i] = state->adc_raw[i];
             }
-            calib = state->line_calib;
-            phys_cfg = state->physical_config;
+            snap.line_calib = state->line_calib;
+            snap.physical_config = state->physical_config;
+            snap.manual_cmd_l = state->manual_cmd_l;
+            snap.manual_cmd_r = state->manual_cmd_r;
+            snap.loadcell_weight = state->loadcell_weight;
             portEXIT_CRITICAL(&state->spinlock);
 
-            // Execute Line Tracking PID every PID_EXEC_DECIMATION ticks (50ms / 20Hz)
-            if (loop_counter % PID_EXEC_DECIMATION == 0) {
-                float e2 = line_tracker.compute_e2(sensor_snapshot, calib);
-                line_tracker.compute_target_rpm(e2, PID_OUTER_DT_S, phys_cfg, target_rpm_l, target_rpm_r);
-            }
+            // Compute strategy (Manual or Autonomous)
+            MotionOutput m_out = motion_controller.compute(snap, dt_s, loop_counter);
+            target_rpm_l = m_out.target_rpm_left;
+            target_rpm_r = m_out.target_rpm_right;
 
             pid_left.set_target_velocity(target_rpm_l);
             pid_right.set_target_velocity(target_rpm_r);

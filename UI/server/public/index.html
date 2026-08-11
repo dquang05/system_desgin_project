@@ -19,8 +19,7 @@
             <div class="tabs">
                 <button class="tab-btn active" data-target="tab-main">Main Logs</button>
                 <button class="tab-btn" data-target="tab-adc">ADC Chart</button>
-                <button class="tab-btn" data-target="tab-motor">Motor Control</button>
-                <button class="tab-btn" data-target="tab-tuning">Live Tuning</button>
+                <button class="tab-btn" data-target="tab-motor">Motor Dashboard</button>
             </div>
 
             <div class="status-indicator">
@@ -55,21 +54,36 @@
                 </div>
             </div>
 
-            <!-- Motor Tab -->
-            <div id="tab-motor" class="tab-content">
-                <div id="motor-container" class="motor-container">
-                    <!-- Managed by motorManager.js -->
-                </div>
-            </div>
-
-            <!-- Live Tuning Tab -->
-            <div id="tab-tuning" class="tab-content">
-                <div class="tuning-container">
-                    <div class="tuning-grid">
+            <!-- Motor Tab (Combined) -->
+            <div id="tab-motor" class="tab-content" style="overflow-y: auto; padding: 24px; background: var(--log-bg);">
+                <div class="motor-grid">
+                    <!-- LEFT MOTOR -->
+                    <div class="motor-card">
+                        <h3>Motor Left</h3>
+                        <div class="motor-stat">
+                            <span class="stat-label">PWM</span>
+                            <span class="stat-value" id="pwm-l-val">0.00%</span>
+                        </div>
+                        <div class="pwm-bar-container">
+                            <div class="pwm-bar fill-left" id="pwm-l-fill-neg"></div>
+                            <div class="pwm-bar-center"></div>
+                            <div class="pwm-bar fill-right" id="pwm-l-fill-pos"></div>
+                        </div>
+                        <div class="motor-stat mt-15">
+                            <span class="stat-label">Encoder</span>
+                            <span class="stat-value" id="enc-l-val">0</span>
+                        </div>
+                        <div class="motor-stat mt-15">
+                            <span class="stat-label">RPM (Act/Tgt)</span>
+                            <span class="stat-value"><span id="rpm-act-l-val" style="color: var(--text-primary)">0.00</span> / <span id="rpm-tgt-l-val" style="color: var(--text-secondary)">0.00</span></span>
+                        </div>
+                        <div class="chart-container" style="height: 200px; margin-top: 15px; padding: 0;">
+                            <canvas id="motor-l-chart"></canvas>
+                        </div>
                         
                         <!-- Left Motor Tuning -->
-                        <div class="tuning-card">
-                            <h3>Left Motor</h3>
+                        <div class="tuning-card" style="margin-top: 20px; border: none; padding: 0; background: transparent;">
+                            <h3 style="font-size: 16px; border: none; margin-bottom: 10px; color: var(--text-primary); text-align: left;">PID Parameters</h3>
                             <div class="tuning-row header">
                                 <span>Param</span>
                                 <span>Active</span>
@@ -91,10 +105,35 @@
                                 <input type="number" id="input-kd-l" step="0.001" value="0.000">
                             </div>
                         </div>
+                    </div>
+                    
+                    <!-- RIGHT MOTOR -->
+                    <div class="motor-card">
+                        <h3>Motor Right</h3>
+                        <div class="motor-stat">
+                            <span class="stat-label">PWM</span>
+                            <span class="stat-value" id="pwm-r-val">0.00%</span>
+                        </div>
+                        <div class="pwm-bar-container">
+                            <div class="pwm-bar fill-left" id="pwm-r-fill-neg"></div>
+                            <div class="pwm-bar-center"></div>
+                            <div class="pwm-bar fill-right" id="pwm-r-fill-pos"></div>
+                        </div>
+                        <div class="motor-stat mt-15">
+                            <span class="stat-label">Encoder</span>
+                            <span class="stat-value" id="enc-r-val">0</span>
+                        </div>
+                        <div class="motor-stat mt-15">
+                            <span class="stat-label">RPM (Act/Tgt)</span>
+                            <span class="stat-value"><span id="rpm-act-r-val" style="color: var(--text-primary)">0.00</span> / <span id="rpm-tgt-r-val" style="color: var(--text-secondary)">0.00</span></span>
+                        </div>
+                        <div class="chart-container" style="height: 200px; margin-top: 15px; padding: 0;">
+                            <canvas id="motor-r-chart"></canvas>
+                        </div>
 
                         <!-- Right Motor Tuning -->
-                        <div class="tuning-card">
-                            <h3>Right Motor</h3>
+                        <div class="tuning-card" style="margin-top: 20px; border: none; padding: 0; background: transparent;">
+                            <h3 style="font-size: 16px; border: none; margin-bottom: 10px; color: var(--text-primary); text-align: left;">PID Parameters</h3>
                             <div class="tuning-row header">
                                 <span>Param</span>
                                 <span>Active</span>
@@ -116,10 +155,39 @@
                                 <input type="number" id="input-kd-r" step="0.001" value="0.000">
                             </div>
                         </div>
+                    </div>
+                </div>
 
-                        <!-- Line Tracker Tuning -->
-                        <div class="tuning-card">
-                            <h3>Line Tracker</h3>
+                <!-- Manual Motor Control -->
+                <div class="motor-grid" style="margin-top: 24px;">
+                    <div class="motor-card" style="width: 100%;">
+                        <h3>Manual Motor Control</h3>
+                        <p style="text-align: center; color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9em;">Directly control wheel RPMs</p>
+                        
+                        <div style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;">
+                            <div class="tuning-row" style="grid-template-columns: auto 1fr; align-items: center; width: 300px; margin-bottom: 0;">
+                                <span class="tuning-label" style="margin-right: 15px;">Left RPM:</span>
+                                <input type="number" id="input-manual-rpm-l" step="0.5" value="0">
+                            </div>
+                            <div class="tuning-row" style="grid-template-columns: auto 1fr; align-items: center; width: 300px; margin-bottom: 0;">
+                                <span class="tuning-label" style="margin-right: 15px;">Right RPM:</span>
+                                <input type="number" id="input-manual-rpm-r" step="0.5" value="0">
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; gap: 10px; margin-top: 20px; justify-content: center; max-width: 400px; margin-left: auto; margin-right: auto;">
+                            <button id="btn-manual-send" class="btn primary" style="flex: 1; padding: 10px;">Send</button>
+                            <button id="btn-manual-stop" class="btn danger" style="flex: 1; padding: 10px;">Stop</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Line Tracker PID and Loadcell -->
+                <div class="motor-grid" style="margin-top: 24px;">
+                    <!-- Line Tracker Tuning -->
+                    <div class="motor-card">
+                        <h3>Line Tracker PID</h3>
+                        <div class="tuning-card" style="border: none; padding: 0; background: transparent;">
                             <div class="tuning-row header">
                                 <span>Param</span>
                                 <span>Active</span>
@@ -141,13 +209,24 @@
                                 <input type="number" id="input-kd-t" step="0.001" value="0.000">
                             </div>
                         </div>
+                    </div>
 
+                    <!-- Loadcell -->
+                    <div class="motor-card">
+                        <h3>Loadcell</h3>
+                        <div class="motor-stat">
+                            <span class="stat-label">Current Weight</span>
+                            <span class="stat-value" id="weight-val">0.00</span>
+                        </div>
+                        <div class="chart-container" style="height: 200px; margin-top: 15px; padding: 0;">
+                            <canvas id="weight-chart"></canvas>
+                        </div>
                     </div>
-                    
-                    <div class="tuning-actions">
-                        <button id="btn-tune-test" class="btn primary btn-large">Test Tune</button>
-                        <button id="btn-tune-save" class="btn danger btn-large">Save to Flash</button>
-                    </div>
+                </div>
+
+                <div class="tuning-actions" style="margin-top: 30px;">
+                    <button id="btn-tune-test" class="btn primary btn-large">Test Tune</button>
+                    <button id="btn-tune-save" class="btn danger btn-large">Save to Flash</button>
                 </div>
             </div>
         </div>

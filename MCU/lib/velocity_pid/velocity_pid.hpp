@@ -74,7 +74,7 @@ private:
     float _target_setpoint{0.0f};
     float _current_setpoint{0.0f};
     
-    float _integral_sum{0.0f};
     float _prev_error{0.0f};
+    float _prev_prev_error{0.0f};
     float _prev_output{0.0f};
 };

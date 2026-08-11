@@ -6,7 +6,7 @@
 #include <cmath>
 #include <algorithm>
 
-float LineTracker::compute_e2(const uint32_t adc_raw[ROBOT_NUM_SENSORS], const LineSensorCalib &calib) {
+float LineTracker::compute_e2(const uint32_t adc_raw[ROBOT_NUM_SENSORS], const LineSensorCalib &calib, const RobotPhysicalConfig &cfg) {
     float adc_calib[ROBOT_NUM_SENSORS];
     float sum_adc = 0.0f;
 
@@ -28,7 +28,7 @@ float LineTracker::compute_e2(const uint32_t adc_raw[ROBOT_NUM_SENSORS], const L
     }
 
     // Weighted Average
-    float x_centroid = (2.0f * (adc_calib[4] - adc_calib[0]) + (adc_calib[3] - adc_calib[1])) * 17.0f / sum_adc;
+    float x_centroid = (2.0f * (adc_calib[4] - adc_calib[0]) + (adc_calib[3] - adc_calib[1])) * cfg.sensor_distance_mm / sum_adc;
     
     float e2 = calib.line_coe_1 * x_centroid - calib.line_coe_2;
     return e2;

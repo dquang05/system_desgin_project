@@ -143,6 +143,28 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('send_manual_drive', (data) => {
+        if (esp32Ip && udpSocket) {
+            try {
+                const payload = JSON.stringify(data);
+                udpSocket.send(payload, 54322, esp32Ip, (err) => {
+                    if (err) {
+                        console.error('Failed to send manual drive packet:', err);
+                        socket.emit('error_msg', 'Failed to send manual drive packet via UDP.');
+                    } else {
+                        console.log(`Sent manual drive packet to ${esp32Ip}:54322`, payload);
+                    }
+                });
+            } catch (err) {
+                console.error('Error stringifying manual drive payload', err);
+                socket.emit('error_msg', 'Error processing manual drive data.');
+            }
+        } else {
+            console.warn('Cannot send manual drive packet: ESP32 IP not known or UDP socket not open.');
+            socket.emit('error_msg', 'Cannot send manual drive command. No connection to ESP32 yet (Unknown IP).');
+        }
+    });
+
     socket.on('command', (cmd) => {
         if (cmd === 'connect') {
             socket.join('log_subscribers');

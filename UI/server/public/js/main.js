@@ -8,6 +8,7 @@ import { LogViewer } from './logViewer.js';
 import { ChartManager } from './chartManager.js';
 import { MotorManager } from './motorManager.js';
 import { TuningManager } from './tuningManager.js';
+import { ManualDriveManager } from './manualDriveManager.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // UI Elements
@@ -26,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const chartMgr = new ChartManager();
     const motorMgr = new MotorManager();
     const tuningMgr = new TuningManager(socketMgr);
+    const manualDriveMgr = new ManualDriveManager(socketMgr);
     
     // Setup Socket Listeners
     socketMgr.onStatusChange((state) => {
@@ -74,7 +76,8 @@ document.addEventListener('DOMContentLoaded', () => {
             logViewer.setActive(targetId === 'tab-main');
             chartMgr.setActive(targetId === 'tab-adc');
             motorMgr.setActive(targetId === 'tab-motor');
-            tuningMgr.setActive(targetId === 'tab-tuning');
+            tuningMgr.setActive(targetId === 'tab-motor');
+            // manualDriveMgr doesn't have an setActive method, and it doesn't need to poll logs
         });
     });
 });

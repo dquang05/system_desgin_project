@@ -40,6 +40,8 @@ SharedRobotState robot_state = {
     .target_rpm_right = 0.0f,
     .actual_rpm_left = 0.0f,
     .actual_rpm_right = 0.0f,
+    .manual_cmd_l = 0.0f,
+    .manual_cmd_r = 0.0f,
     .loadcell_weight = 0.0f,
     .line_calib = {.x_max = {4095, 4095, 4095, 4095, 4095},
                    .x_min = {0, 0, 0, 0, 0},
@@ -49,6 +51,7 @@ SharedRobotState robot_state = {
                    .line_coe_2 = 0.0f},
     .physical_config = {.wheel_base_mm = DEFAULT_PHYS_WHEEL_BASE_MM,
                         .wheel_radius_mm = DEFAULT_PHYS_WHEEL_RADIUS_MM,
+                        .sensor_distance_mm = DEFAULT_PHYS_SENSOR_DISTANCE_MM,
                         .v_ref = 0.0f,
                         .kp = DEFAULT_KP,
                         .kd = DEFAULT_KD,
@@ -290,6 +293,18 @@ void udp_receiver_task(void *pvParameters) {
                 local_state = *state;
                 portEXIT_CRITICAL(&state->spinlock);
                 save_nvs_params(local_state);
+            } else if (strcmp(cmd->valuestring, "manual_drive") == 0) {
+                cJSON *rpm_l = cJSON_GetObjectItemCaseSensitive(json, "rpm_l");
+                cJSON *rpm_r = cJSON_GetObjectItemCaseSensitive(json, "rpm_r");
+                
+                portENTER_CRITICAL(&state->spinlock);
+                if (cJSON_IsNumber(rpm_l)) {
+                    state->manual_cmd_l = rpm_l->valuedouble;
+                }
+                if (cJSON_IsNumber(rpm_r)) {
+                    state->manual_cmd_r = rpm_r->valuedouble;
+                }
+                portEXIT_CRITICAL(&state->spinlock);
             }
         }
         cJSON_Delete(json);
@@ -334,7 +349,7 @@ extern "C" void app_main() {
                                .enc_a_gpio = PIN_ENC_L_A,
                                .enc_b_gpio = PIN_ENC_L_B,
                                .pwm_freq_hz = 20000,
-                               .encoder_ppr = 330,
+                               .encoder_ppr = PHYS_ENCODER_PPR,
                                .pcnt_high_limit = 30000,
                                .pcnt_low_limit = -30000};
   ESP_ERROR_CHECK(motor_left.init(mleft_cfg));
@@ -345,7 +360,7 @@ extern "C" void app_main() {
                                 .enc_a_gpio = PIN_ENC_R_A,
                                 .enc_b_gpio = PIN_ENC_R_B,
                                 .pwm_freq_hz = 20000,
-                                .encoder_ppr = 330,
+                                .encoder_ppr = PHYS_ENCODER_PPR,
                                 .pcnt_high_limit = 30000,
                                 .pcnt_low_limit = -30000};
   ESP_ERROR_CHECK(motor_right.init(mright_cfg));
@@ -355,7 +370,7 @@ extern "C" void app_main() {
       .ki = robot_state.physical_config.ki_l,
       .kd = robot_state.physical_config.kd_l,
       .out_max = 85.0f, // Maximum PWM duty cycle limit is 85%
-      .out_min = -85.0f,
+      .out_min = 0.0f,  // Enforce >= 0 for safety against reverse pulses
       .integral_max = 85.0f, // Corresponding Integral Anti-Windup limit
       .max_accel_units_s2 = 1000.0f};
   velocity_pid_config_t pid_cfg_r = {
@@ -363,7 +378,7 @@ extern "C" void app_main() {
       .ki = robot_state.physical_config.ki_r,
       .kd = robot_state.physical_config.kd_r,
       .out_max = 85.0f,
-      .out_min = -85.0f,
+      .out_min = 0.0f,  // Enforce >= 0 for safety against reverse pulses
       .integral_max = 85.0f,
       .max_accel_units_s2 = 1000.0f};
   pid_left.init(pid_cfg_l);

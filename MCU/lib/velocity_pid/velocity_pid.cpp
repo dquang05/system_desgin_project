@@ -16,62 +16,45 @@ void VelocityPid::set_target_velocity(float target_vel) {
 }
 
 void VelocityPid::reset() {
-    _integral_sum = 0.0f;
     _prev_error = 0.0f;
+    _prev_prev_error = 0.0f;
     _current_setpoint = 0.0f;
     _prev_output = 0.0f;
 }
 
 float VelocityPid::compute(float current_vel, float dt_s) {
-    // Edge case: invalid dt_s to prevent division by zero or negative time
     if (dt_s <= 0.0f) {
         return _prev_output;
     }
 
-    // Setpoint Ramping (Slew Rate Limiter)
+    // Setpoint Ramping
     float max_step = _config.max_accel_units_s2 * dt_s;
     float setpoint_diff = _target_setpoint - _current_setpoint;
-    
-    // Clamp the step step to [-max_step, max_step]
     float step = std::clamp(setpoint_diff, -max_step, max_step);
     _current_setpoint += step;
 
-    // Calculate error based on the ramped setpoint
-    float error = _current_setpoint - current_vel;
-
-    // Calculate Proportional term
-    float p_term = _config.kp * error;
-
-    // Calculate Derivative term
-    float d_term = _config.kd * (error - _prev_error) / dt_s;
-
-    // Calculate total provisional output (P + provisional I + D)
-    float provisional_i_term = _config.ki * (_integral_sum + error * dt_s);
-    float provisional_output = p_term + provisional_i_term + d_term;
-
-    // Integral Anti-Windup (Clamping Method)
-    bool is_saturated = (provisional_output > _config.out_max) || (provisional_output < _config.out_min);
-    bool is_same_sign = (error * provisional_output > 0.0f);
-
-    if (is_saturated && is_same_sign) {
-        // Output is saturated and the error is pushing it further into saturation.
-        // Stop integrating the error.
-    } else {
-        // Safe to accumulate
-        _integral_sum += error * dt_s;
+    // Deadband for absolute zero target to stop "hunting"
+    if (std::abs(_target_setpoint) < 0.1f && std::abs(_current_setpoint) < 0.1f) {
+        reset();
+        return 0.0f;
     }
 
-    // Clamp the integral sum to its limits
-    _integral_sum = std::clamp(_integral_sum, -_config.integral_max, _config.integral_max);
+    float error = _current_setpoint - current_vel;
 
-    // Calculate final total output with the updated and clamped integral sum
-    float i_term = _config.ki * _integral_sum;
-    float total_output = p_term + i_term + d_term;
+    // Incremental PID Formula: 
+    // delta_output = Kp * (error - prev_error) + Ki * error * dt + Kd * (error - 2*prev_error + prev_prev_error) / dt
+    float delta_p = _config.kp * (error - _prev_error);
+    float delta_i = _config.ki * error * dt_s;
+    float delta_d = _config.kd * (error - 2.0f * _prev_error + _prev_prev_error) / dt_s;
 
-    // Clamp the final output
+    float delta_output = delta_p + delta_i + delta_d;
+    float total_output = _prev_output + delta_output;
+
+    // Clamp the final output to prevent wind-up and exceed hardware limits
     total_output = std::clamp(total_output, _config.out_min, _config.out_max);
 
     // Save states for next cycle
+    _prev_prev_error = _prev_error;
     _prev_error = error;
     _prev_output = total_output;
 

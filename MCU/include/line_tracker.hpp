@@ -24,7 +24,7 @@ public:
      * @param calib Calibration constants for the line sensors.
      * @return float Calculated lateral error e2 in mm.
      */
-    float compute_e2(const uint32_t adc_raw[ROBOT_NUM_SENSORS], const LineSensorCalib &calib);
+    float compute_e2(const uint32_t adc_raw[ROBOT_NUM_SENSORS], const LineSensorCalib &calib, const RobotPhysicalConfig &cfg);
 
     /**
      * @brief Computes the target RPM for both wheels based on tracking error.

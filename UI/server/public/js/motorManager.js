@@ -8,10 +8,7 @@ export class MotorManager {
      * Initializes the MotorManager, builds the DOM, and sets up charts.
      */
     constructor() {
-        this.container = document.getElementById('motor-container');
         this.isActive = false;
-        
-        // Internal state
         this.state = {
             encLeft: 0,
             encRight: 0,
@@ -44,68 +41,7 @@ export class MotorManager {
      * Builds the inner HTML structure for the motor container.
      */
     buildUI() {
-        this.container.innerHTML = `
-            <div class="motor-grid">
-                <div class="motor-card">
-                    <h3>Motor Left</h3>
-                    <div class="motor-stat">
-                        <span class="stat-label">PWM</span>
-                        <span class="stat-value" id="pwm-l-val">0.00%</span>
-                    </div>
-                    <div class="pwm-bar-container">
-                        <div class="pwm-bar fill-left" id="pwm-l-fill-neg"></div>
-                        <div class="pwm-bar-center"></div>
-                        <div class="pwm-bar fill-right" id="pwm-l-fill-pos"></div>
-                    </div>
-                    <div class="motor-stat mt-15">
-                        <span class="stat-label">Encoder</span>
-                        <span class="stat-value" id="enc-l-val">0</span>
-                    </div>
-                    <div class="motor-stat mt-15">
-                        <span class="stat-label">RPM (Act/Tgt)</span>
-                        <span class="stat-value"><span id="rpm-act-l-val" style="color: var(--text-primary)">0.00</span> / <span id="rpm-tgt-l-val" style="color: var(--text-secondary)">0.00</span></span>
-                    </div>
-                    <div class="chart-container" style="height: 200px; margin-top: 15px; padding: 0;">
-                        <canvas id="motor-l-chart"></canvas>
-                    </div>
-                </div>
-                <div class="motor-card">
-                    <h3>Motor Right</h3>
-                    <div class="motor-stat">
-                        <span class="stat-label">PWM</span>
-                        <span class="stat-value" id="pwm-r-val">0.00%</span>
-                    </div>
-                    <div class="pwm-bar-container">
-                        <div class="pwm-bar fill-left" id="pwm-r-fill-neg"></div>
-                        <div class="pwm-bar-center"></div>
-                        <div class="pwm-bar fill-right" id="pwm-r-fill-pos"></div>
-                    </div>
-                    <div class="motor-stat mt-15">
-                        <span class="stat-label">Encoder</span>
-                        <span class="stat-value" id="enc-r-val">0</span>
-                    </div>
-                    <div class="motor-stat mt-15">
-                        <span class="stat-label">RPM (Act/Tgt)</span>
-                        <span class="stat-value"><span id="rpm-act-r-val" style="color: var(--text-primary)">0.00</span> / <span id="rpm-tgt-r-val" style="color: var(--text-secondary)">0.00</span></span>
-                    </div>
-                    <div class="chart-container" style="height: 200px; margin-top: 15px; padding: 0;">
-                        <canvas id="motor-r-chart"></canvas>
-                    </div>
-                </div>
-            </div>
-            <div class="motor-grid" style="margin-top: 24px;">
-                <div class="motor-card" style="width: 100%;">
-                    <h3>Loadcell</h3>
-                    <div class="motor-stat">
-                        <span class="stat-label">Current Weight</span>
-                        <span class="stat-value" id="weight-val">0.00</span>
-                    </div>
-                    <div class="chart-container" style="height: 200px; margin-top: 15px; padding: 0;">
-                        <canvas id="weight-chart"></canvas>
-                    </div>
-                </div>
-            </div>
-        `;
+        // The HTML structure is now statically defined in index.html
         
         // Cache DOM elements
         this.elements = {

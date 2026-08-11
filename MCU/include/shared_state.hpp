@@ -16,6 +16,7 @@ struct LineSensorCalib {
 struct RobotPhysicalConfig {
     float wheel_base_mm;
     float wheel_radius_mm;
+    float sensor_distance_mm;
     float v_ref;
     float kp;      // Line tracker kp
     float kd;      // Line tracker kd
@@ -39,6 +40,8 @@ struct SharedRobotState {
     float target_rpm_right;
     float actual_rpm_left;
     float actual_rpm_right;
+    float manual_cmd_l; // Target RPM for left motor in Manual Mode
+    float manual_cmd_r; // Target RPM for right motor in Manual Mode
     float loadcell_weight;
     LineSensorCalib line_calib;
     RobotPhysicalConfig physical_config;
