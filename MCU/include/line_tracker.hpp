@@ -45,4 +45,5 @@ public:
 private:
     float _prev_e2{0.0f};      /**< Previous lateral error in mm */
     float _prev_d_part{0.0f};  /**< Previous derivative filter state */
+    bool _is_line_lost{false}; /**< Flag indicating if the line is lost (all white) */
 };

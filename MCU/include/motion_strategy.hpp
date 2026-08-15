@@ -13,6 +13,9 @@ struct StateSnapshot {
     float manual_cmd_l;
     float manual_cmd_r;
     float loadcell_weight;
+    int64_t encoder_l;
+    int64_t encoder_r;
+    TrackStrategyConfig track_config;
 };
 
 class IMotionStrategy {

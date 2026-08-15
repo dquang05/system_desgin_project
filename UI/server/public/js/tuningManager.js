@@ -44,6 +44,21 @@ export class TuningManager {
         // Buttons
         this.btnTestTune = document.getElementById('btn-tune-test');
         this.btnSave = document.getElementById('btn-tune-save');
+        this.btnTuneTrack = document.getElementById('btn-tune-track');
+        
+        // Track Config Inputs
+        this.trackInputEls = {
+            vNormal: document.getElementById('input-track-v-normal'),
+            vTurn: document.getElementById('input-track-v-turn'),
+            slowStart: document.getElementById('input-track-slow-start'),
+            slowEnd: document.getElementById('input-track-slow-end'),
+            p1Out: document.getElementById('input-track-p1-out'),
+            p1In: document.getElementById('input-track-p1-in'),
+            p1Timeout: document.getElementById('input-track-p1-timeout'),
+            p2Out: document.getElementById('input-track-p2-out'),
+            p2In: document.getElementById('input-track-p2-in'),
+            p2Thresh: document.getElementById('input-track-p2-thresh')
+        };
         
         // State
         this.isActive = false;
@@ -62,6 +77,14 @@ export class TuningManager {
         // Attach listeners
         this.btnTestTune.addEventListener('click', () => this.sendTuneCommand());
         this.btnSave.addEventListener('click', () => this.sendSaveCommand());
+        this.btnTuneTrack.addEventListener('click', () => this.sendTuneTrackCommand());
+        
+        // Listen to system state to disable buttons
+        this.socketMgr.onSystemStateChange((isRunning) => {
+            this.btnTestTune.disabled = isRunning;
+            this.btnSave.disabled = isRunning;
+            this.btnTuneTrack.disabled = isRunning;
+        });
     }
     
     /**
@@ -142,11 +165,12 @@ export class TuningManager {
                 parseFloat(this.inputEls.kpT.value) || 0,
                 parseFloat(this.inputEls.kiT.value) || 0,
                 parseFloat(this.inputEls.kdT.value) || 0
-            ]
+            ],
+            v_ref: parseFloat(this.trackInputEls.vNormal.value) || 200.0
         };
         
         if (this.socketMgr && this.socketMgr.socket) {
-            this.socketMgr.socket.emit('send_tune', payload);
+            this.socketMgr.sendUdp(payload);
         }
     }
     
@@ -159,7 +183,34 @@ export class TuningManager {
         };
         
         if (this.socketMgr && this.socketMgr.socket) {
-            this.socketMgr.socket.emit('send_tune', payload);
+            this.socketMgr.sendUdp(payload);
+        }
+    }
+
+    /**
+     * Sends the track configuration (tune_track) to the backend.
+     */
+    sendTuneTrackCommand() {
+        const payload = {
+            cmd: 'tune_track',
+            speed: [
+                parseFloat(this.trackInputEls.vNormal.value) || 0,
+                parseFloat(this.trackInputEls.vTurn.value) || 0,
+                parseFloat(this.trackInputEls.slowStart.value) || 0,
+                parseFloat(this.trackInputEls.slowEnd.value) || 0
+            ],
+            turn: [
+                parseFloat(this.trackInputEls.p1Out.value) || 0,
+                parseFloat(this.trackInputEls.p1In.value) || 0,
+                parseInt(this.trackInputEls.p1Timeout.value) || 0,
+                parseFloat(this.trackInputEls.p2Out.value) || 0,
+                parseFloat(this.trackInputEls.p2In.value) || 0,
+                parseFloat(this.trackInputEls.p2Thresh.value) || 0
+            ]
+        };
+        
+        if (this.socketMgr && this.socketMgr.socket) {
+            this.socketMgr.sendUdp(payload);
         }
     }
 }

@@ -40,8 +40,8 @@ constexpr int PIN_MOTOR_R_IN1 = 16;
 constexpr int PIN_MOTOR_R_IN2 = 17;
 
 // --- JGB37-520 Encoder Pins (Must support interrupts) ---
-constexpr int PIN_ENC_L_A = 18;
-constexpr int PIN_ENC_L_B = 19;
+constexpr int PIN_ENC_L_A = 19;
+constexpr int PIN_ENC_L_B = 18;
 
 constexpr int PIN_ENC_R_A = 22;
 constexpr int PIN_ENC_R_B = 21;

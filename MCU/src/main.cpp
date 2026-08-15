@@ -1,19 +1,19 @@
 /**
  * @file main.cpp
  * @brief Main entry point and orchestrator for the ESP32 AMR firmware.
- * 
- * This file contains the FreeRTOS task definitions, global state management, 
- * and hardware initialization. It acts as the central coordinator for all 
+ *
+ * This file contains the FreeRTOS task definitions, global state management,
+ * and hardware initialization. It acts as the central coordinator for all
  * decoupled library modules.
  */
+#include <cJSON.h>
 #include <esp_log.h>
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#include <nvs_flash.h>
-#include <nvs.h>
 #include <lwip/sockets.h>
-#include <cJSON.h>
+#include <nvs.h>
+#include <nvs_flash.h>
 
 #include "../include/main.hpp"
 #include "../include/motion_task.hpp"
@@ -52,7 +52,7 @@ SharedRobotState robot_state = {
     .physical_config = {.wheel_base_mm = DEFAULT_PHYS_WHEEL_BASE_MM,
                         .wheel_radius_mm = DEFAULT_PHYS_WHEEL_RADIUS_MM,
                         .sensor_distance_mm = DEFAULT_PHYS_SENSOR_DISTANCE_MM,
-                        .v_ref = 0.0f,
+                        .v_ref = 200.0f, // 200 mm/s base forward velocity
                         .kp = DEFAULT_KP,
                         .kd = DEFAULT_KD,
                         .pid_tau = DEFAULT_PID_TAU,
@@ -61,7 +61,25 @@ SharedRobotState robot_state = {
                         .kd_l = DEFAULT_KD_L,
                         .kp_r = DEFAULT_KP_R,
                         .ki_r = DEFAULT_KI_R,
-                        .kd_r = DEFAULT_KD_R}};
+                        .kd_r = DEFAULT_KD_R},
+    .track_config = {
+        .encoder_ppr = 341.2f,
+        .v_ref_normal = 200.0f,
+        .v_ref_turn = 100.0f,
+        .slow_zone_start_mm = 250.0f,
+        .slow_zone_end_mm = 2250.0f,
+        .turn_phase1_outer_rpm = 50.0f,
+        .turn_phase1_inner_rpm = 0.0f,
+        .turn_phase1_timeout_ticks = 20, // 20 ticks * 50ms = 1000ms
+        .turn_phase2_outer_rpm = 30.0f,
+        .turn_phase2_inner_rpm = 0.0f,
+        .turn_phase2_center_threshold = 2800.0f,
+        .loadcell_type1_min = 800.0f,
+        .loadcell_type1_max = 1200.0f,
+        .loadcell_type2_min = 1800.0f,
+        .loadcell_type2_max = 2200.0f
+    }
+};
 
 // Global Drivers (Workers)
 wifi_manager::WifiManager wifi;
@@ -74,10 +92,10 @@ LoadcellHX711 loadcell(PIN_LOADCELL_DT, PIN_LOADCELL_SCK);
 
 /**
  * @brief ADC DMA Polling Task.
- * 
+ *
  * Continuously polls the ADC DMA buffer and updates the global state safely.
  * This runs on Core 1 with very high priority (6) to prevent buffer overflows.
- * 
+ *
  * @param pvParameters Pointer to the global SharedRobotState.
  */
 void adc_task(void *pvParameters) {
@@ -100,10 +118,10 @@ void adc_task(void *pvParameters) {
 
 /**
  * @brief HX711 Loadcell Task.
- * 
- * Polls the HX711 sensor for weight data at a defined interval and updates the global state.
- * Runs on Core 1 with medium priority (3).
- * 
+ *
+ * Polls the HX711 sensor for weight data at a defined interval and updates the
+ * global state. Runs on Core 1 with medium priority (3).
+ *
  * @param pvParameters Pointer to the global SharedRobotState.
  */
 void loadcell_task(void *pvParameters) {
@@ -123,10 +141,10 @@ void loadcell_task(void *pvParameters) {
 
 /**
  * @brief Wi-Fi Toggle Task.
- * 
+ *
  * Monitors a physical switch to toggle Wi-Fi connection on/off dynamically.
  * Runs on Core 1 with low priority (2).
- * 
+ *
  * @param pvParameters Not used.
  */
 void wifi_toggle_task(void *pvParameters) {
@@ -142,13 +160,13 @@ void wifi_toggle_task(void *pvParameters) {
 
   while (true) {
     int switch_state = gpio_get_level(PIN_WIFI_SWITCH);
-    
+
     // Switch connected to GND -> state 0 -> turn ON Wi-Fi
     if (switch_state == 0 && !wifi_is_running) {
       ESP_LOGI(TAG, "Switch ON: Starting Wi-Fi...");
       wifi.start();
       wifi_is_running = true;
-    } 
+    }
     // Switch disconnected -> state 1 (pull-up) -> turn OFF Wi-Fi
     else if (switch_state == 1 && wifi_is_running) {
       ESP_LOGI(TAG, "Switch OFF: Stopping Wi-Fi...");
@@ -160,161 +178,259 @@ void wifi_toggle_task(void *pvParameters) {
   }
 }
 
+struct NvsPidData {
+    float kp, kd, pid_tau;
+    float kp_l, ki_l, kd_l;
+    float kp_r, ki_r, kd_r;
+};
+
 /**
- * @brief Loads PID and physical parameters from NVS flash memory.
- * 
+ * @brief Loads PID parameters from NVS flash memory.
+ *
  * @param state Reference to the global SharedRobotState where config will be stored.
  */
 void load_nvs_params(SharedRobotState &state) {
-    nvs_handle_t my_handle;
-    esp_err_t err = nvs_open("storage", NVS_READONLY, &my_handle);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "Error (%s) opening NVS handle! Using defaults.", esp_err_to_name(err));
-        return;
-    }
+  nvs_handle_t my_handle;
+  esp_err_t err = nvs_open("storage", NVS_READONLY, &my_handle);
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "Error (%s) opening NVS handle! Using defaults.",
+             esp_err_to_name(err));
+    return;
+  }
 
-    size_t required_size = sizeof(RobotPhysicalConfig);
-    err = nvs_get_blob(my_handle, "phys_cfg", &state.physical_config, &required_size);
-    if (err == ESP_OK) {
-        ESP_LOGI(TAG, "Loaded PID params from NVS successfully.");
-    } else {
-        ESP_LOGW(TAG, "Failed to load PID params from NVS (using defaults).");
-    }
-    nvs_close(my_handle);
+  NvsPidData pid_data;
+  size_t required_size = sizeof(NvsPidData);
+  err = nvs_get_blob(my_handle, "pid_cfg", &pid_data, &required_size);
+  if (err == ESP_OK) {
+    state.physical_config.kp = pid_data.kp;
+    state.physical_config.kd = pid_data.kd;
+    state.physical_config.pid_tau = pid_data.pid_tau;
+    state.physical_config.kp_l = pid_data.kp_l;
+    state.physical_config.ki_l = pid_data.ki_l;
+    state.physical_config.kd_l = pid_data.kd_l;
+    state.physical_config.kp_r = pid_data.kp_r;
+    state.physical_config.ki_r = pid_data.ki_r;
+    state.physical_config.kd_r = pid_data.kd_r;
+    ESP_LOGI(TAG, "Loaded PID params from NVS successfully.");
+  } else {
+    ESP_LOGW(TAG, "Failed to load PID params from NVS (using defaults).");
+  }
+  nvs_close(my_handle);
 }
 
 /**
  * @brief Saves the current PID and physical parameters to NVS flash memory.
- * 
+ *
  * @param state Reference to the global SharedRobotState containing the config.
  */
 void save_nvs_params(const SharedRobotState &state) {
-    nvs_handle_t my_handle;
-    esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error (%s) opening NVS handle to save!", esp_err_to_name(err));
-        return;
-    }
+  nvs_handle_t my_handle;
+  esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Error (%s) opening NVS handle to save!",
+             esp_err_to_name(err));
+    return;
+  }
 
-    err = nvs_set_blob(my_handle, "phys_cfg", &state.physical_config, sizeof(RobotPhysicalConfig));
+  NvsPidData pid_data = {
+      .kp = state.physical_config.kp,
+      .kd = state.physical_config.kd,
+      .pid_tau = state.physical_config.pid_tau,
+      .kp_l = state.physical_config.kp_l,
+      .ki_l = state.physical_config.ki_l,
+      .kd_l = state.physical_config.kd_l,
+      .kp_r = state.physical_config.kp_r,
+      .ki_r = state.physical_config.ki_r,
+      .kd_r = state.physical_config.kd_r
+  };
+
+  err = nvs_set_blob(my_handle, "pid_cfg", &pid_data, sizeof(NvsPidData));
+  if (err == ESP_OK) {
+    err = nvs_commit(my_handle);
     if (err == ESP_OK) {
-        err = nvs_commit(my_handle);
-        if (err == ESP_OK) {
-            ESP_LOGI(TAG, "Saved PID params to NVS successfully.");
-        }
+      ESP_LOGI(TAG, "Saved PID params to NVS successfully.");
     }
-    nvs_close(my_handle);
+  }
+  nvs_close(my_handle);
 }
 
 /**
  * @brief UDP Receiver Task for remote PID tuning.
- * 
- * Listens for JSON-formatted UDP packets to update PID tuning dynamically in RAM,
- * or save the current configuration to NVS. Runs on Core 0.
- * 
- * @note Dynamic Allocation Exception: This task uses `cJSON_Parse` which performs
- *       `malloc()` internally. Although dynamic allocation is generally forbidden
- *       in continuous loops by project rules, it is permitted here because this task 
- *       only executes its allocation path upon receiving specific manual tuning packets,
- *       which occurs very rarely. 
- * 
+ *
+ * Listens for JSON-formatted UDP packets to update PID tuning dynamically in
+ * RAM, or save the current configuration to NVS. Runs on Core 0.
+ *
+ * @note Dynamic Allocation Exception: This task uses `cJSON_Parse` which
+ * performs `malloc()` internally. Although dynamic allocation is generally
+ * forbidden in continuous loops by project rules, it is permitted here because
+ * this task only executes its allocation path upon receiving specific manual
+ * tuning packets, which occurs very rarely.
+ *
  * @param pvParameters Pointer to the global SharedRobotState.
  */
 void udp_receiver_task(void *pvParameters) {
-    SharedRobotState *state = static_cast<SharedRobotState *>(pvParameters);
-    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
-    if (sock < 0) {
-        ESP_LOGE(TAG, "Unable to create UDP receiver socket");
-        vTaskDelete(NULL);
-        return;
+  SharedRobotState *state = static_cast<SharedRobotState *>(pvParameters);
+  int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+  if (sock < 0) {
+    ESP_LOGE(TAG, "Unable to create UDP receiver socket");
+    vTaskDelete(NULL);
+    return;
+  }
+
+  struct sockaddr_in dest_addr = {};
+  dest_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  dest_addr.sin_family = AF_INET;
+  dest_addr.sin_port = htons(UDP_LISTEN_PORT);
+
+  int err = bind(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+  if (err < 0) {
+    ESP_LOGE(TAG, "Socket unable to bind: errno %d", errno);
+    close(sock);
+    vTaskDelete(NULL);
+    return;
+  }
+
+  ESP_LOGI(TAG, "UDP receiver listening on port %d", UDP_LISTEN_PORT);
+  char rx_buffer[512];
+
+  while (true) {
+    struct sockaddr_storage source_addr;
+    socklen_t socklen = sizeof(source_addr);
+    int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0,
+                       (struct sockaddr *)&source_addr, &socklen);
+
+    if (len < 0) {
+      ESP_LOGE(TAG, "recvfrom failed: errno %d", errno);
+      vTaskDelay(pdMS_TO_TICKS(1000));
+      continue;
     }
 
-    struct sockaddr_in dest_addr = {};
-    dest_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    dest_addr.sin_family = AF_INET;
-    dest_addr.sin_port = htons(UDP_LISTEN_PORT);
+    rx_buffer[len] = '\0';
+    cJSON *json = cJSON_Parse(rx_buffer);
+    if (json == NULL)
+      continue;
 
-    int err = bind(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-    if (err < 0) {
-        ESP_LOGE(TAG, "Socket unable to bind: errno %d", errno);
-        close(sock);
-        vTaskDelete(NULL);
-        return;
-    }
+    cJSON *cmd = cJSON_GetObjectItemCaseSensitive(json, "cmd");
+    if (cJSON_IsString(cmd) && (cmd->valuestring != NULL)) {
+      bool is_running = false;
+      portENTER_CRITICAL(&state->spinlock);
+      is_running = state->system_running;
+      portEXIT_CRITICAL(&state->spinlock);
 
-    ESP_LOGI(TAG, "UDP receiver listening on port %d", UDP_LISTEN_PORT);
-    char rx_buffer[512];
+      if (strcmp(cmd->valuestring, "start") == 0) {
+        portENTER_CRITICAL(&state->spinlock);
+        state->system_running = true;
+        state->soft_stop_request = false;
+        portEXIT_CRITICAL(&state->spinlock);
+        ESP_LOGI(TAG, "UDP Command: START");
+      } else if (strcmp(cmd->valuestring, "stop") == 0) {
+        portENTER_CRITICAL(&state->spinlock);
+        state->soft_stop_request = true;
+        portEXIT_CRITICAL(&state->spinlock);
+        ESP_LOGI(TAG, "UDP Command: STOP (Soft brake requested)");
+      } else if (strcmp(cmd->valuestring, "tune") == 0) {
+        if (is_running) {
+          ESP_LOGW(TAG, "Cannot tune PID while system is running!");
+        } else {
+          cJSON *pid_l = cJSON_GetObjectItemCaseSensitive(json, "pid_L");
+          cJSON *pid_r = cJSON_GetObjectItemCaseSensitive(json, "pid_R");
+          cJSON *pid_t = cJSON_GetObjectItemCaseSensitive(json, "pid_T");
 
-    while (true) {
-        struct sockaddr_storage source_addr;
-        socklen_t socklen = sizeof(source_addr);
-        int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0, (struct sockaddr *)&source_addr, &socklen);
-
-        if (len < 0) {
-            ESP_LOGE(TAG, "recvfrom failed: errno %d", errno);
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            continue;
+        portENTER_CRITICAL(&state->spinlock);
+        if (cJSON_IsArray(pid_l) && cJSON_GetArraySize(pid_l) == 3) {
+          state->physical_config.kp_l =
+              cJSON_GetArrayItem(pid_l, 0)->valuedouble;
+          state->physical_config.ki_l =
+              cJSON_GetArrayItem(pid_l, 1)->valuedouble;
+          state->physical_config.kd_l =
+              cJSON_GetArrayItem(pid_l, 2)->valuedouble;
+          pid_left.set_tunings(state->physical_config.kp_l,
+                               state->physical_config.ki_l,
+                               state->physical_config.kd_l);
         }
-
-        rx_buffer[len] = '\0';
-        cJSON *json = cJSON_Parse(rx_buffer);
-        if (json == NULL) continue;
-
-        cJSON *cmd = cJSON_GetObjectItemCaseSensitive(json, "cmd");
-        if (cJSON_IsString(cmd) && (cmd->valuestring != NULL)) {
-            if (strcmp(cmd->valuestring, "tune") == 0) {
-                cJSON *pid_l = cJSON_GetObjectItemCaseSensitive(json, "pid_L");
-                cJSON *pid_r = cJSON_GetObjectItemCaseSensitive(json, "pid_R");
-                cJSON *pid_t = cJSON_GetObjectItemCaseSensitive(json, "pid_T");
-
-                portENTER_CRITICAL(&state->spinlock);
-                if (cJSON_IsArray(pid_l) && cJSON_GetArraySize(pid_l) == 3) {
-                    state->physical_config.kp_l = cJSON_GetArrayItem(pid_l, 0)->valuedouble;
-                    state->physical_config.ki_l = cJSON_GetArrayItem(pid_l, 1)->valuedouble;
-                    state->physical_config.kd_l = cJSON_GetArrayItem(pid_l, 2)->valuedouble;
-                    pid_left.set_tunings(state->physical_config.kp_l, state->physical_config.ki_l, state->physical_config.kd_l);
-                }
-                if (cJSON_IsArray(pid_r) && cJSON_GetArraySize(pid_r) == 3) {
-                    state->physical_config.kp_r = cJSON_GetArrayItem(pid_r, 0)->valuedouble;
-                    state->physical_config.ki_r = cJSON_GetArrayItem(pid_r, 1)->valuedouble;
-                    state->physical_config.kd_r = cJSON_GetArrayItem(pid_r, 2)->valuedouble;
-                    pid_right.set_tunings(state->physical_config.kp_r, state->physical_config.ki_r, state->physical_config.kd_r);
-                }
-                if (cJSON_IsArray(pid_t) && cJSON_GetArraySize(pid_t) == 3) {
-                    state->physical_config.kp = cJSON_GetArrayItem(pid_t, 0)->valuedouble;
-                    state->physical_config.kd = cJSON_GetArrayItem(pid_t, 1)->valuedouble;
-                    state->physical_config.pid_tau = cJSON_GetArrayItem(pid_t, 2)->valuedouble;
-                }
-                portEXIT_CRITICAL(&state->spinlock);
-                ESP_LOGI(TAG, "Applied new PID tunings to RAM.");
-            } else if (strcmp(cmd->valuestring, "save") == 0) {
-                SharedRobotState local_state;
-                portENTER_CRITICAL(&state->spinlock);
-                local_state = *state;
-                portEXIT_CRITICAL(&state->spinlock);
-                save_nvs_params(local_state);
-            } else if (strcmp(cmd->valuestring, "manual_drive") == 0) {
-                cJSON *rpm_l = cJSON_GetObjectItemCaseSensitive(json, "rpm_l");
-                cJSON *rpm_r = cJSON_GetObjectItemCaseSensitive(json, "rpm_r");
-                
-                portENTER_CRITICAL(&state->spinlock);
-                if (cJSON_IsNumber(rpm_l)) {
-                    state->manual_cmd_l = rpm_l->valuedouble;
-                }
-                if (cJSON_IsNumber(rpm_r)) {
-                    state->manual_cmd_r = rpm_r->valuedouble;
-                }
-                portEXIT_CRITICAL(&state->spinlock);
-            }
+        if (cJSON_IsArray(pid_r) && cJSON_GetArraySize(pid_r) == 3) {
+          state->physical_config.kp_r =
+              cJSON_GetArrayItem(pid_r, 0)->valuedouble;
+          state->physical_config.ki_r =
+              cJSON_GetArrayItem(pid_r, 1)->valuedouble;
+          state->physical_config.kd_r =
+              cJSON_GetArrayItem(pid_r, 2)->valuedouble;
+          pid_right.set_tunings(state->physical_config.kp_r,
+                                state->physical_config.ki_r,
+                                state->physical_config.kd_r);
         }
-        cJSON_Delete(json);
+        if (cJSON_IsArray(pid_t) && cJSON_GetArraySize(pid_t) == 3) {
+          state->physical_config.kp = cJSON_GetArrayItem(pid_t, 0)->valuedouble;
+          state->physical_config.kd = cJSON_GetArrayItem(pid_t, 1)->valuedouble;
+          state->physical_config.pid_tau =
+              cJSON_GetArrayItem(pid_t, 2)->valuedouble;
+        }
+        
+        cJSON *v_ref_json = cJSON_GetObjectItemCaseSensitive(json, "v_ref");
+        if (cJSON_IsNumber(v_ref_json)) {
+          state->physical_config.v_ref = v_ref_json->valuedouble;
+        }
+        portEXIT_CRITICAL(&state->spinlock);
+        ESP_LOGI(TAG, "Applied new PID tunings to RAM.");
+        }
+      } else if (strcmp(cmd->valuestring, "tune_track") == 0) {
+        if (is_running) {
+          ESP_LOGW(TAG, "Cannot tune track config while system is running!");
+        } else {
+          cJSON *speed = cJSON_GetObjectItemCaseSensitive(json, "speed");
+          cJSON *turn = cJSON_GetObjectItemCaseSensitive(json, "turn");
+          
+          portENTER_CRITICAL(&state->spinlock);
+          if (cJSON_IsArray(speed) && cJSON_GetArraySize(speed) == 4) {
+            state->track_config.v_ref_normal = cJSON_GetArrayItem(speed, 0)->valuedouble;
+            state->track_config.v_ref_turn = cJSON_GetArrayItem(speed, 1)->valuedouble;
+            state->track_config.slow_zone_start_mm = cJSON_GetArrayItem(speed, 2)->valuedouble;
+            state->track_config.slow_zone_end_mm = cJSON_GetArrayItem(speed, 3)->valuedouble;
+          }
+          if (cJSON_IsArray(turn) && cJSON_GetArraySize(turn) == 6) {
+            state->track_config.turn_phase1_outer_rpm = cJSON_GetArrayItem(turn, 0)->valuedouble;
+            state->track_config.turn_phase1_inner_rpm = cJSON_GetArrayItem(turn, 1)->valuedouble;
+            state->track_config.turn_phase1_timeout_ticks = (uint32_t)cJSON_GetArrayItem(turn, 2)->valuedouble;
+            state->track_config.turn_phase2_outer_rpm = cJSON_GetArrayItem(turn, 3)->valuedouble;
+            state->track_config.turn_phase2_inner_rpm = cJSON_GetArrayItem(turn, 4)->valuedouble;
+            state->track_config.turn_phase2_center_threshold = cJSON_GetArrayItem(turn, 5)->valuedouble;
+          }
+          portEXIT_CRITICAL(&state->spinlock);
+          ESP_LOGI(TAG, "Applied new Track Config to RAM.");
+        }
+      } else if (strcmp(cmd->valuestring, "save") == 0) {
+        SharedRobotState local_state;
+        portENTER_CRITICAL(&state->spinlock);
+        local_state = *state;
+        portEXIT_CRITICAL(&state->spinlock);
+        save_nvs_params(local_state);
+      } else if (strcmp(cmd->valuestring, "manual_drive") == 0) {
+        if (is_running) {
+          ESP_LOGW(TAG, "Cannot manual drive while autonomous system is running!");
+        } else {
+          cJSON *rpm_l = cJSON_GetObjectItemCaseSensitive(json, "rpm_l");
+          cJSON *rpm_r = cJSON_GetObjectItemCaseSensitive(json, "rpm_r");
+
+          portENTER_CRITICAL(&state->spinlock);
+          if (cJSON_IsNumber(rpm_l)) {
+            state->manual_cmd_l = rpm_l->valuedouble;
+          }
+          if (cJSON_IsNumber(rpm_r)) {
+            state->manual_cmd_r = rpm_r->valuedouble;
+          }
+          portEXIT_CRITICAL(&state->spinlock);
+        }
+      }
     }
+    cJSON_Delete(json);
+  }
 }
 
 /**
  * @brief Application Main Entry Point.
- * 
- * Initializes NVS, Wi-Fi, Drivers, and orchestrates the creation of all FreeRTOS tasks.
+ *
+ * Initializes NVS, Wi-Fi, Drivers, and orchestrates the creation of all
+ * FreeRTOS tasks.
  */
 extern "C" void app_main() {
   ESP_LOGI(TAG, "Initializing Orchestrator...");
@@ -335,10 +451,10 @@ extern "C" void app_main() {
   adc_dma_config_t adc_cfg = {};
   adc_cfg.sample_freq_hz = 20000;
   adc_cfg.dma_frame_size = 256;
-  adc_cfg.channel_map[SENSOR_01] = PIN_ADC_SENSOR_01;
-  adc_cfg.channel_map[SENSOR_02] = PIN_ADC_SENSOR_02;
-  adc_cfg.channel_map[SENSOR_03] = PIN_ADC_SENSOR_03;
-  adc_cfg.channel_map[SENSOR_04] = PIN_ADC_SENSOR_04;
+  adc_cfg.channel_map[SENSOR_01] = PIN_ADC_SENSOR_02; // Swapped 1 and 2
+  adc_cfg.channel_map[SENSOR_02] = PIN_ADC_SENSOR_01; // Swapped 1 and 2
+  adc_cfg.channel_map[SENSOR_03] = PIN_ADC_SENSOR_04; // Swapped 3 and 4
+  adc_cfg.channel_map[SENSOR_04] = PIN_ADC_SENSOR_03; // Swapped 3 and 4
   adc_cfg.channel_map[SENSOR_05] = PIN_ADC_SENSOR_05;
   ESP_ERROR_CHECK(adc_driver.init(adc_cfg));
   ESP_ERROR_CHECK(adc_driver.start());
@@ -348,7 +464,7 @@ extern "C" void app_main() {
                                .in2_gpio = PIN_MOTOR_L_IN2,
                                .enc_a_gpio = PIN_ENC_L_A,
                                .enc_b_gpio = PIN_ENC_L_B,
-                               .pwm_freq_hz = 20000,
+                               .pwm_freq_hz = 1000,
                                .encoder_ppr = PHYS_ENCODER_PPR,
                                .pcnt_high_limit = 30000,
                                .pcnt_low_limit = -30000};
@@ -359,7 +475,7 @@ extern "C" void app_main() {
                                 .in2_gpio = PIN_MOTOR_R_IN2,
                                 .enc_a_gpio = PIN_ENC_R_A,
                                 .enc_b_gpio = PIN_ENC_R_B,
-                                .pwm_freq_hz = 20000,
+                                .pwm_freq_hz = 1000,
                                 .encoder_ppr = PHYS_ENCODER_PPR,
                                 .pcnt_high_limit = 30000,
                                 .pcnt_low_limit = -30000};
@@ -369,8 +485,8 @@ extern "C" void app_main() {
       .kp = robot_state.physical_config.kp_l,
       .ki = robot_state.physical_config.ki_l,
       .kd = robot_state.physical_config.kd_l,
-      .out_max = 85.0f, // Maximum PWM duty cycle limit is 85%
-      .out_min = 0.0f,  // Enforce >= 0 for safety against reverse pulses
+      .out_max = 85.0f,      // Maximum PWM duty cycle limit is 85%
+      .out_min = 0.0f,       // Enforce >= 0 for safety against reverse pulses
       .integral_max = 85.0f, // Corresponding Integral Anti-Windup limit
       .max_accel_units_s2 = 1000.0f};
   velocity_pid_config_t pid_cfg_r = {
@@ -378,7 +494,7 @@ extern "C" void app_main() {
       .ki = robot_state.physical_config.ki_r,
       .kd = robot_state.physical_config.kd_r,
       .out_max = 85.0f,
-      .out_min = 0.0f,  // Enforce >= 0 for safety against reverse pulses
+      .out_min = 0.0f, // Enforce >= 0 for safety against reverse pulses
       .integral_max = 85.0f,
       .max_accel_units_s2 = 1000.0f};
   pid_left.init(pid_cfg_l);
@@ -417,10 +533,10 @@ extern "C" void app_main() {
                           &robot_state, 5, nullptr, 1);
   xTaskCreatePinnedToCore(telemetry_task_routine, "Tele_Task", 4096,
                           &robot_state, 2, nullptr, 0);
-  xTaskCreatePinnedToCore(wifi_toggle_task, "Wifi_Toggle", 2048,
-                          nullptr, 2, nullptr, 1);
-  xTaskCreatePinnedToCore(udp_receiver_task, "UDP_Recv", 4096,
-                          &robot_state, 1, nullptr, 0);
+  xTaskCreatePinnedToCore(wifi_toggle_task, "Wifi_Toggle", 2048, nullptr, 2,
+                          nullptr, 1);
+  xTaskCreatePinnedToCore(udp_receiver_task, "UDP_Recv", 4096, &robot_state, 1,
+                          nullptr, 0);
 
   ESP_LOGI(TAG, "Tasks deployed. Yielding app_main.");
 }

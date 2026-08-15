@@ -18,7 +18,16 @@ export class MotorManager {
             rpmTgtRight: 0,
             rpmActLeft: 0,
             rpmActRight: 0,
-            weight: 0
+            weight: 0,
+            overshootLeft: 0,
+            sseLeft: 0,
+            overshootRight: 0,
+            sseRight: 0
+        };
+        
+        this.stepTracking = {
+            left: { target: 0, maxAct: 0, minAct: 0, inStep: false },
+            right: { target: 0, maxAct: 0, minAct: 0, inStep: false }
         };
         
         this.needsUpdate = false;
@@ -51,6 +60,8 @@ export class MotorManager {
             encLVal: document.getElementById('enc-l-val'),
             rpmActLVal: document.getElementById('rpm-act-l-val'),
             rpmTgtLVal: document.getElementById('rpm-tgt-l-val'),
+            overshootLVal: document.getElementById('overshoot-l-val'),
+            sseLVal: document.getElementById('sse-l-val'),
             
             pwmRVal: document.getElementById('pwm-r-val'),
             pwmRFillNeg: document.getElementById('pwm-r-fill-neg'),
@@ -58,6 +69,8 @@ export class MotorManager {
             encRVal: document.getElementById('enc-r-val'),
             rpmActRVal: document.getElementById('rpm-act-r-val'),
             rpmTgtRVal: document.getElementById('rpm-tgt-r-val'),
+            overshootRVal: document.getElementById('overshoot-r-val'),
+            sseRVal: document.getElementById('sse-r-val'),
             
             weightVal: document.getElementById('weight-val')
         };
@@ -168,6 +181,18 @@ export class MotorManager {
             }
             
             if (obj.rpm_tgt && Array.isArray(obj.rpm_tgt) && obj.rpm_tgt.length === 2) {
+                if (Math.abs(obj.rpm_tgt[0] - this.state.rpmTgtLeft) > 1.0) {
+                    this.stepTracking.left.target = obj.rpm_tgt[0];
+                    this.stepTracking.left.maxAct = this.state.rpmActLeft;
+                    this.stepTracking.left.minAct = this.state.rpmActLeft;
+                    this.stepTracking.left.inStep = true;
+                }
+                if (Math.abs(obj.rpm_tgt[1] - this.state.rpmTgtRight) > 1.0) {
+                    this.stepTracking.right.target = obj.rpm_tgt[1];
+                    this.stepTracking.right.maxAct = this.state.rpmActRight;
+                    this.stepTracking.right.minAct = this.state.rpmActRight;
+                    this.stepTracking.right.inStep = true;
+                }
                 this.state.rpmTgtLeft = obj.rpm_tgt[0];
                 this.state.rpmTgtRight = obj.rpm_tgt[1];
                 updated = true;
@@ -176,6 +201,31 @@ export class MotorManager {
             if (obj.rpm_act && Array.isArray(obj.rpm_act) && obj.rpm_act.length === 2) {
                 this.state.rpmActLeft = obj.rpm_act[0];
                 this.state.rpmActRight = obj.rpm_act[1];
+                
+                // Left metrics
+                if (this.stepTracking.left.inStep) {
+                    this.stepTracking.left.maxAct = Math.max(this.stepTracking.left.maxAct, this.state.rpmActLeft);
+                    this.stepTracking.left.minAct = Math.min(this.stepTracking.left.minAct, this.state.rpmActLeft);
+                    if (this.stepTracking.left.target >= 0) {
+                        this.state.overshootLeft = Math.max(0, this.stepTracking.left.maxAct - this.stepTracking.left.target);
+                    } else {
+                        this.state.overshootLeft = Math.max(0, this.stepTracking.left.target - this.stepTracking.left.minAct);
+                    }
+                }
+                this.state.sseLeft = this.state.rpmTgtLeft - this.state.rpmActLeft;
+                
+                // Right metrics
+                if (this.stepTracking.right.inStep) {
+                    this.stepTracking.right.maxAct = Math.max(this.stepTracking.right.maxAct, this.state.rpmActRight);
+                    this.stepTracking.right.minAct = Math.min(this.stepTracking.right.minAct, this.state.rpmActRight);
+                    if (this.stepTracking.right.target >= 0) {
+                        this.state.overshootRight = Math.max(0, this.stepTracking.right.maxAct - this.stepTracking.right.target);
+                    } else {
+                        this.state.overshootRight = Math.max(0, this.stepTracking.right.target - this.stepTracking.right.minAct);
+                    }
+                }
+                this.state.sseRight = this.state.rpmTgtRight - this.state.rpmActRight;
+                
                 updated = true;
             }
 
@@ -262,6 +312,8 @@ export class MotorManager {
         this.elements.encLVal.textContent = this.state.encLeft.toString();
         this.elements.rpmActLVal.textContent = this.state.rpmActLeft.toFixed(2);
         this.elements.rpmTgtLVal.textContent = this.state.rpmTgtLeft.toFixed(2);
+        if (this.elements.overshootLVal) this.elements.overshootLVal.textContent = this.state.overshootLeft.toFixed(2);
+        if (this.elements.sseLVal) this.elements.sseLVal.textContent = this.state.sseLeft.toFixed(2);
         
         this.updatePWMBar(
             this.elements.pwmRVal, 
@@ -272,6 +324,8 @@ export class MotorManager {
         this.elements.encRVal.textContent = this.state.encRight.toString();
         this.elements.rpmActRVal.textContent = this.state.rpmActRight.toFixed(2);
         this.elements.rpmTgtRVal.textContent = this.state.rpmTgtRight.toFixed(2);
+        if (this.elements.overshootRVal) this.elements.overshootRVal.textContent = this.state.overshootRight.toFixed(2);
+        if (this.elements.sseRVal) this.elements.sseRVal.textContent = this.state.sseRight.toFixed(2);
 
         if (this.elements.weightVal) {
             this.elements.weightVal.textContent = this.state.weight.toFixed(2);

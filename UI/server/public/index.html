@@ -31,7 +31,9 @@
         <div class="controls">
             <button id="btn-connect" class="btn primary">Connect</button>
             <button id="btn-disconnect" class="btn danger">Disconnect</button>
-            <button id="btn-clear" class="btn secondary">Clear Log</button>
+            <button id="btn-start" class="btn success" style="margin-left: 20px;">Start System</button>
+            <button id="btn-stop" class="btn warning">Stop System</button>
+            <button id="btn-clear" class="btn secondary" style="margin-left: 20px;">Clear Log</button>
             
             <label class="toggle">
                 <input type="checkbox" id="toggle-autoscroll" checked>
@@ -76,6 +78,14 @@
                         <div class="motor-stat mt-15">
                             <span class="stat-label">RPM (Act/Tgt)</span>
                             <span class="stat-value"><span id="rpm-act-l-val" style="color: var(--text-primary)">0.00</span> / <span id="rpm-tgt-l-val" style="color: var(--text-secondary)">0.00</span></span>
+                        </div>
+                        <div class="motor-stat mt-15">
+                            <span class="stat-label">Overshoot</span>
+                            <span class="stat-value" id="overshoot-l-val">0.00</span>
+                        </div>
+                        <div class="motor-stat mt-15">
+                            <span class="stat-label">Steady State Error</span>
+                            <span class="stat-value" id="sse-l-val">0.00</span>
                         </div>
                         <div class="chart-container" style="height: 200px; margin-top: 15px; padding: 0;">
                             <canvas id="motor-l-chart"></canvas>
@@ -127,6 +137,14 @@
                             <span class="stat-label">RPM (Act/Tgt)</span>
                             <span class="stat-value"><span id="rpm-act-r-val" style="color: var(--text-primary)">0.00</span> / <span id="rpm-tgt-r-val" style="color: var(--text-secondary)">0.00</span></span>
                         </div>
+                        <div class="motor-stat mt-15">
+                            <span class="stat-label">Overshoot</span>
+                            <span class="stat-value" id="overshoot-r-val">0.00</span>
+                        </div>
+                        <div class="motor-stat mt-15">
+                            <span class="stat-label">Steady State Error</span>
+                            <span class="stat-value" id="sse-r-val">0.00</span>
+                        </div>
                         <div class="chart-container" style="height: 200px; margin-top: 15px; padding: 0;">
                             <canvas id="motor-r-chart"></canvas>
                         </div>
@@ -167,11 +185,11 @@
                         <div style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;">
                             <div class="tuning-row" style="grid-template-columns: auto 1fr; align-items: center; width: 300px; margin-bottom: 0;">
                                 <span class="tuning-label" style="margin-right: 15px;">Left RPM:</span>
-                                <input type="number" id="input-manual-rpm-l" step="0.5" value="0">
+                                <input type="number" id="input-manual-rpm-l" step="0.5" min="-333" max="333" value="0">
                             </div>
                             <div class="tuning-row" style="grid-template-columns: auto 1fr; align-items: center; width: 300px; margin-bottom: 0;">
                                 <span class="tuning-label" style="margin-right: 15px;">Right RPM:</span>
-                                <input type="number" id="input-manual-rpm-r" step="0.5" value="0">
+                                <input type="number" id="input-manual-rpm-r" step="0.5" min="-333" max="333" value="0">
                             </div>
                         </div>
                         
@@ -220,6 +238,67 @@
                         </div>
                         <div class="chart-container" style="height: 200px; margin-top: 15px; padding: 0;">
                             <canvas id="weight-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Track Configuration -->
+                <div class="motor-grid" style="margin-top: 24px;">
+                    <div class="motor-card" style="width: 100%;">
+                        <h3>Track Configuration</h3>
+                        <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                            <!-- Speed Config -->
+                            <div style="flex: 1; min-width: 300px;">
+                                <h4 style="color: var(--text-secondary); margin-bottom: 10px;">Speed Settings</h4>
+                                <div class="tuning-row">
+                                    <span class="tuning-label">Normal Speed (v_ref_normal)</span>
+                                    <input type="number" id="input-track-v-normal" step="10" value="200.0">
+                                </div>
+                                <div class="tuning-row">
+                                    <span class="tuning-label">Turn Speed (v_ref_turn)</span>
+                                    <input type="number" id="input-track-v-turn" step="10" value="100.0">
+                                </div>
+                                <div class="tuning-row">
+                                    <span class="tuning-label">Slow Zone Start (mm)</span>
+                                    <input type="number" id="input-track-slow-start" step="10" value="250.0">
+                                </div>
+                                <div class="tuning-row">
+                                    <span class="tuning-label">Slow Zone End (mm)</span>
+                                    <input type="number" id="input-track-slow-end" step="10" value="2250.0">
+                                </div>
+                            </div>
+                            
+                            <!-- Turn Config -->
+                            <div style="flex: 1; min-width: 300px;">
+                                <h4 style="color: var(--text-secondary); margin-bottom: 10px;">Turn Settings</h4>
+                                <div class="tuning-row">
+                                    <span class="tuning-label">Phase 1: Outer RPM</span>
+                                    <input type="number" id="input-track-p1-out" step="5" value="50.0">
+                                </div>
+                                <div class="tuning-row">
+                                    <span class="tuning-label">Phase 1: Inner RPM</span>
+                                    <input type="number" id="input-track-p1-in" step="5" value="0.0">
+                                </div>
+                                <div class="tuning-row">
+                                    <span class="tuning-label">Phase 1: Timeout (ticks)</span>
+                                    <input type="number" id="input-track-p1-timeout" step="1" value="20">
+                                </div>
+                                <div class="tuning-row">
+                                    <span class="tuning-label">Phase 2: Outer RPM</span>
+                                    <input type="number" id="input-track-p2-out" step="5" value="30.0">
+                                </div>
+                                <div class="tuning-row">
+                                    <span class="tuning-label">Phase 2: Inner RPM</span>
+                                    <input type="number" id="input-track-p2-in" step="5" value="0.0">
+                                </div>
+                                <div class="tuning-row">
+                                    <span class="tuning-label">Phase 2: Line Threshold</span>
+                                    <input type="number" id="input-track-p2-thresh" step="100" value="2800.0">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tuning-actions" style="margin-top: 20px;">
+                            <button id="btn-tune-track" class="btn primary btn-large">Send Track Config</button>
                         </div>
                     </div>
                 </div>

@@ -22,6 +22,12 @@ export class ManualDriveManager {
         // Attach listeners
         this.btnSend.addEventListener('click', () => this.sendManualDriveCommand());
         this.btnStop.addEventListener('click', () => this.sendStopCommand());
+        
+        // Listen to system state to disable buttons
+        this.socketMgr.onSystemStateChange((isRunning) => {
+            this.btnSend.disabled = isRunning;
+            this.btnStop.disabled = isRunning;
+        });
     }
     
     /**
@@ -30,12 +36,12 @@ export class ManualDriveManager {
     sendManualDriveCommand() {
         const payload = {
             cmd: 'manual_drive',
-            rpm_l: parseFloat(this.inputRpmL.value) || 0,
-            rpm_r: parseFloat(this.inputRpmR.value) || 0
+            rpm_l: Math.min(Math.max(parseFloat(this.inputRpmL.value) || 0, -333), 333),
+            rpm_r: Math.min(Math.max(parseFloat(this.inputRpmR.value) || 0, -333), 333)
         };
         
         if (this.socketMgr && this.socketMgr.socket) {
-            this.socketMgr.socket.emit('send_manual_drive', payload);
+            this.socketMgr.sendUdp(payload);
         }
     }
     
@@ -53,7 +59,7 @@ export class ManualDriveManager {
         };
         
         if (this.socketMgr && this.socketMgr.socket) {
-            this.socketMgr.socket.emit('send_manual_drive', payload);
+            this.socketMgr.sendUdp(payload);
         }
     }
 }

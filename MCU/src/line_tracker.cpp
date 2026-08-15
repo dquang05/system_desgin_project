@@ -9,9 +9,12 @@
 float LineTracker::compute_e2(const uint32_t adc_raw[ROBOT_NUM_SENSORS], const LineSensorCalib &calib, const RobotPhysicalConfig &cfg) {
     float adc_calib[ROBOT_NUM_SENSORS];
     float sum_adc = 0.0f;
+    bool line_lost = true;
 
     // Affine Transformation (Calibration)
     for (int i = 0; i < ROBOT_NUM_SENSORS; i++) {
+        if (adc_raw[i] > 500) line_lost = false; // If any sensor sees black, line is not lost
+
         float x_diff = static_cast<float>(calib.x_max[i] - calib.x_min[i]);
         if (std::abs(x_diff) < 0.001f) x_diff = 1.0f; // Prevent div by zero
         float a_coeff = static_cast<float>(calib.y_max - calib.y_min) / x_diff;
@@ -23,7 +26,9 @@ float LineTracker::compute_e2(const uint32_t adc_raw[ROBOT_NUM_SENSORS], const L
         sum_adc += adc_calib[i];
     }
 
-    if (sum_adc <= 0.001f) {
+    _is_line_lost = line_lost;
+
+    if (sum_adc <= 0.001f || _is_line_lost) {
         return _prev_e2; // Avoid division by zero, return previous error
     }
 
@@ -35,6 +40,13 @@ float LineTracker::compute_e2(const uint32_t adc_raw[ROBOT_NUM_SENSORS], const L
 }
 
 void LineTracker::compute_target_rpm(float e2, float dt_s, const RobotPhysicalConfig &cfg, float &out_rpm_l, float &out_rpm_r) {
+    // Stop the robot completely if the line is lost (all sensors see white)
+    if (_is_line_lost) {
+        out_rpm_l = 0.0f;
+        out_rpm_r = 0.0f;
+        return;
+    }
+
     // PD Control with Derivative Filter
     // Enforce minimum tau to prevent Nyquist instability (ringing) when tau=0
     float safe_tau = std::max(cfg.pid_tau, 0.01f);
@@ -63,8 +75,8 @@ void LineTracker::compute_target_rpm(float e2, float dt_s, const RobotPhysicalCo
     if (std::abs(r) < 0.001f) r = 1.0f; // Prevent div by zero
     float inv_r = 1.0f / r; // Optimization: precompute reciprocal
 
-    float w_left_rads = (cfg.v_ref - (cfg.wheel_base_mm * 0.5f) * delta_w) * inv_r;
-    float w_right_rads = (cfg.v_ref + (cfg.wheel_base_mm * 0.5f) * delta_w) * inv_r;
+    float w_left_rads = (cfg.v_ref + (cfg.wheel_base_mm * 0.5f) * delta_w) * inv_r;
+    float w_right_rads = (cfg.v_ref - (cfg.wheel_base_mm * 0.5f) * delta_w) * inv_r;
 
     // Convert rad/s to RPM
     // RPM = rad/s * (60 / (2 * pi))

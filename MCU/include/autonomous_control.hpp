@@ -1,16 +1,56 @@
 #pragma once
+
 #include "motion_strategy.hpp"
+#include "shared_state.hpp"
 #include "line_tracker.hpp"
 
+/**
+ * @brief Represents the high-level mission state of the robot.
+ */
+enum class TrackState {
+    MOVING_TO_PICKUP,    // Normal line tracking until cross-line is detected
+    WAITING_FOR_PACKAGE, // Stopped, reading loadcell
+    DELIVERING_TYPE_1,   // Package 1kg -> Turn Left
+    DELIVERING_TYPE_2,   // Package 2kg -> Turn Right
+    RECOVERY_PHASE_1,    // Hard turn to get back on track
+    RECOVERY_PHASE_2,    // Pivot turn to align with track
+    FINISHED
+};
+
+/**
+ * @brief High-level autonomous controller.
+ * 
+ * Manages the state machine, trajectory logic, loadcell integration,
+ * and delegates low-level PID tracking to the LineTracker class.
+ */
 class AutonomousControl : public IMotionStrategy {
 public:
     AutonomousControl() = default;
     ~AutonomousControl() override = default;
 
+    /**
+     * @brief Computes the target RPMs for autonomous operation.
+     */
     MotionOutput compute(const StateSnapshot& state, float dt_s, uint32_t loop_counter) override;
+
+    /**
+     * @brief Resets the state machine and odometry for a new run.
+     */
+    void reset();
 
 private:
     LineTracker _line_tracker;
+
+    // State Machine variables
+    TrackState _current_state{TrackState::MOVING_TO_PICKUP};
+    
+    // Odometry
+    int64_t _prev_encoder_l{0};
+    int64_t _prev_encoder_r{0};
+    float _total_displacement_mm{0.0f};
+    
+    // Recovery Phase timers/counters
+    uint32_t _recovery_ticks{0};
 
     // Decimation logic for line tracking execution frequency
     static constexpr uint32_t PID_EXEC_DECIMATION = 5; 

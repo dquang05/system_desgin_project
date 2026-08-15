@@ -165,6 +165,28 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('send_udp', (data) => {
+        if (esp32Ip && udpSocket) {
+            try {
+                const payload = JSON.stringify(data);
+                udpSocket.send(payload, 54322, esp32Ip, (err) => {
+                    if (err) {
+                        console.error('Failed to send UDP packet:', err);
+                        socket.emit('error_msg', 'Failed to send packet via UDP.');
+                    } else {
+                        console.log(`Sent UDP packet to ${esp32Ip}:54322`, payload);
+                    }
+                });
+            } catch (err) {
+                console.error('Error stringifying UDP payload', err);
+                socket.emit('error_msg', 'Error processing data.');
+            }
+        } else {
+            console.warn('Cannot send UDP packet: ESP32 IP not known or UDP socket not open.');
+            socket.emit('error_msg', 'Cannot send command. No connection to ESP32 yet (Unknown IP).');
+        }
+    });
+
     socket.on('command', (cmd) => {
         if (cmd === 'connect') {
             socket.join('log_subscribers');
