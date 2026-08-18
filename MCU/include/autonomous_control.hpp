@@ -10,10 +10,9 @@
 enum class TrackState {
     MOVING_TO_PICKUP,    // Normal line tracking until cross-line is detected
     WAITING_FOR_PACKAGE, // Stopped, reading loadcell
-    DELIVERING_TYPE_1,   // Package 1kg -> Turn Left
-    DELIVERING_TYPE_2,   // Package 2kg -> Turn Right
-    RECOVERY_PHASE_1,    // Hard turn to get back on track
-    RECOVERY_PHASE_2,    // Pivot turn to align with track
+    DELAY_BEFORE_START,  // Wait 1s after package is loaded
+    DELIVERING_TYPE_1,   // Package 1kg -> Turn Left Smoothly
+    DELIVERING_TYPE_2,   // Package 2kg -> Turn Right Smoothly
     FINISHED
 };
 
@@ -43,11 +42,14 @@ private:
 
     // State Machine variables
     TrackState _current_state{TrackState::MOVING_TO_PICKUP};
+    bool _is_carrying_package{false};
+    uint8_t _cargo_type{0}; // 1 = Type 1 (Left), 2 = Type 2 (Right)
     
     // Odometry
     int64_t _prev_encoder_l{0};
     int64_t _prev_encoder_r{0};
     float _total_displacement_mm{0.0f};
+    float _reference_displacement_mm{0.0f}; // Added to fix compilation error
     
     // Recovery Phase timers/counters
     uint32_t _recovery_ticks{0};

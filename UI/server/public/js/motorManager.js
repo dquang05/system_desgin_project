@@ -1,4 +1,5 @@
 // motorManager.js
+import { SteadyStateErrorCalculator } from './steadyStateErrorCalculator.js';
 
 /**
  * Manages the motor telemetry and UI rendering, including PWM bars and charts.
@@ -32,6 +33,9 @@ export class MotorManager {
         
         this.needsUpdate = false;
         this.renderPending = false; // Prevents multiple requestAnimationFrame calls in the same frame
+        
+        this.sseCalcLeft = new SteadyStateErrorCalculator();
+        this.sseCalcRight = new SteadyStateErrorCalculator();
         
         // Chart configuration
         this.maxDataPoints = 100;
@@ -212,7 +216,7 @@ export class MotorManager {
                         this.state.overshootLeft = Math.max(0, this.stepTracking.left.target - this.stepTracking.left.minAct);
                     }
                 }
-                this.state.sseLeft = this.state.rpmTgtLeft - this.state.rpmActLeft;
+                this.state.sseLeft = this.sseCalcLeft.update(this.state.rpmTgtLeft, this.state.rpmActLeft);
                 
                 // Right metrics
                 if (this.stepTracking.right.inStep) {
@@ -224,7 +228,7 @@ export class MotorManager {
                         this.state.overshootRight = Math.max(0, this.stepTracking.right.target - this.stepTracking.right.minAct);
                     }
                 }
-                this.state.sseRight = this.state.rpmTgtRight - this.state.rpmActRight;
+                this.state.sseRight = this.sseCalcRight.update(this.state.rpmTgtRight, this.state.rpmActRight);
                 
                 updated = true;
             }

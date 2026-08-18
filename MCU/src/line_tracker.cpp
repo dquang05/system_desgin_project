@@ -81,8 +81,10 @@ void LineTracker::compute_target_rpm(float e2, float dt_s, const RobotPhysicalCo
     // Convert rad/s to RPM
     // RPM = rad/s * (60 / (2 * pi))
     const float RADS_TO_RPM = 60.0f / (2.0f * (float)M_PI);
-    out_rpm_l = w_left_rads * RADS_TO_RPM;
-    out_rpm_r = w_right_rads * RADS_TO_RPM;
+    
+    // Prevent target RPM from going negative when turning sharply
+    out_rpm_l = std::max(0.0f, w_left_rads * RADS_TO_RPM);
+    out_rpm_r = std::max(0.0f, w_right_rads * RADS_TO_RPM);
 }
 
 void LineTracker::reset() {

@@ -78,7 +78,9 @@ SharedRobotState robot_state = {
         .loadcell_type1_max = 1200.0f,
         .loadcell_type2_min = 1800.0f,
         .loadcell_type2_max = 2200.0f
-    }
+    },
+    .system_running = false,
+    .soft_stop_request = false
 };
 
 // Global Drivers (Workers)
@@ -335,43 +337,66 @@ void udp_receiver_task(void *pvParameters) {
           cJSON *pid_l = cJSON_GetObjectItemCaseSensitive(json, "pid_L");
           cJSON *pid_r = cJSON_GetObjectItemCaseSensitive(json, "pid_R");
           cJSON *pid_t = cJSON_GetObjectItemCaseSensitive(json, "pid_T");
+          cJSON *v_ref_json = cJSON_GetObjectItemCaseSensitive(json, "v_ref");
 
-        portENTER_CRITICAL(&state->spinlock);
-        if (cJSON_IsArray(pid_l) && cJSON_GetArraySize(pid_l) == 3) {
-          state->physical_config.kp_l =
-              cJSON_GetArrayItem(pid_l, 0)->valuedouble;
-          state->physical_config.ki_l =
-              cJSON_GetArrayItem(pid_l, 1)->valuedouble;
-          state->physical_config.kd_l =
-              cJSON_GetArrayItem(pid_l, 2)->valuedouble;
-          pid_left.set_tunings(state->physical_config.kp_l,
-                               state->physical_config.ki_l,
-                               state->physical_config.kd_l);
-        }
-        if (cJSON_IsArray(pid_r) && cJSON_GetArraySize(pid_r) == 3) {
-          state->physical_config.kp_r =
-              cJSON_GetArrayItem(pid_r, 0)->valuedouble;
-          state->physical_config.ki_r =
-              cJSON_GetArrayItem(pid_r, 1)->valuedouble;
-          state->physical_config.kd_r =
-              cJSON_GetArrayItem(pid_r, 2)->valuedouble;
-          pid_right.set_tunings(state->physical_config.kp_r,
-                                state->physical_config.ki_r,
-                                state->physical_config.kd_r);
-        }
-        if (cJSON_IsArray(pid_t) && cJSON_GetArraySize(pid_t) == 3) {
-          state->physical_config.kp = cJSON_GetArrayItem(pid_t, 0)->valuedouble;
-          state->physical_config.kd = cJSON_GetArrayItem(pid_t, 1)->valuedouble;
-          state->physical_config.pid_tau =
-              cJSON_GetArrayItem(pid_t, 2)->valuedouble;
-        }
-        
-        cJSON *v_ref_json = cJSON_GetObjectItemCaseSensitive(json, "v_ref");
-        if (cJSON_IsNumber(v_ref_json)) {
-          state->physical_config.v_ref = v_ref_json->valuedouble;
-        }
-        portEXIT_CRITICAL(&state->spinlock);
-        ESP_LOGI(TAG, "Applied new PID tunings to RAM.");
+          bool update_l = false, update_r = false, update_t = false, update_v = false;
+          float l_p, l_i, l_d;
+          float r_p, r_i, r_d;
+          float t_p, t_d, t_tau;
+          float v_ref;
+
+          if (cJSON_IsArray(pid_l) && cJSON_GetArraySize(pid_l) == 3) {
+            l_p = cJSON_GetArrayItem(pid_l, 0)->valuedouble;
+            l_i = cJSON_GetArrayItem(pid_l, 1)->valuedouble;
+            l_d = cJSON_GetArrayItem(pid_l, 2)->valuedouble;
+            update_l = true;
+          }
+          if (cJSON_IsArray(pid_r) && cJSON_GetArraySize(pid_r) == 3) {
+            r_p = cJSON_GetArrayItem(pid_r, 0)->valuedouble;
+            r_i = cJSON_GetArrayItem(pid_r, 1)->valuedouble;
+            r_d = cJSON_GetArrayItem(pid_r, 2)->valuedouble;
+            update_r = true;
+          }
+          if (cJSON_IsArray(pid_t) && cJSON_GetArraySize(pid_t) == 3) {
+            t_p = cJSON_GetArrayItem(pid_t, 0)->valuedouble;
+            t_d = cJSON_GetArrayItem(pid_t, 1)->valuedouble;
+            t_tau = cJSON_GetArrayItem(pid_t, 2)->valuedouble;
+            update_t = true;
+          }
+          if (cJSON_IsNumber(v_ref_json)) {
+            v_ref = v_ref_json->valuedouble;
+            update_v = true;
+          }
+
+          portENTER_CRITICAL(&state->spinlock);
+          if (update_l) {
+            state->physical_config.kp_l = l_p;
+            state->physical_config.ki_l = l_i;
+            state->physical_config.kd_l = l_d;
+          }
+          if (update_r) {
+            state->physical_config.kp_r = r_p;
+            state->physical_config.ki_r = r_i;
+            state->physical_config.kd_r = r_d;
+          }
+          if (update_t) {
+            state->physical_config.kp = t_p;
+            state->physical_config.kd = t_d;
+            state->physical_config.pid_tau = t_tau;
+          }
+          if (update_v) {
+            state->physical_config.v_ref = v_ref;
+          }
+          portEXIT_CRITICAL(&state->spinlock);
+
+          if (update_l) {
+            pid_left.set_tunings(l_p, l_i, l_d);
+          }
+          if (update_r) {
+            pid_right.set_tunings(r_p, r_i, r_d);
+          }
+
+          ESP_LOGI(TAG, "Applied new PID tunings to RAM.");
         }
       } else if (strcmp(cmd->valuestring, "tune_track") == 0) {
         if (is_running) {
@@ -380,20 +405,42 @@ void udp_receiver_task(void *pvParameters) {
           cJSON *speed = cJSON_GetObjectItemCaseSensitive(json, "speed");
           cJSON *turn = cJSON_GetObjectItemCaseSensitive(json, "turn");
           
-          portENTER_CRITICAL(&state->spinlock);
+          bool update_speed = false, update_turn = false;
+          float s0, s1, s2, s3;
+          float t0, t1, t3, t4, t5;
+          uint32_t t2;
+
           if (cJSON_IsArray(speed) && cJSON_GetArraySize(speed) == 4) {
-            state->track_config.v_ref_normal = cJSON_GetArrayItem(speed, 0)->valuedouble;
-            state->track_config.v_ref_turn = cJSON_GetArrayItem(speed, 1)->valuedouble;
-            state->track_config.slow_zone_start_mm = cJSON_GetArrayItem(speed, 2)->valuedouble;
-            state->track_config.slow_zone_end_mm = cJSON_GetArrayItem(speed, 3)->valuedouble;
+            s0 = cJSON_GetArrayItem(speed, 0)->valuedouble;
+            s1 = cJSON_GetArrayItem(speed, 1)->valuedouble;
+            s2 = cJSON_GetArrayItem(speed, 2)->valuedouble;
+            s3 = cJSON_GetArrayItem(speed, 3)->valuedouble;
+            update_speed = true;
           }
           if (cJSON_IsArray(turn) && cJSON_GetArraySize(turn) == 6) {
-            state->track_config.turn_phase1_outer_rpm = cJSON_GetArrayItem(turn, 0)->valuedouble;
-            state->track_config.turn_phase1_inner_rpm = cJSON_GetArrayItem(turn, 1)->valuedouble;
-            state->track_config.turn_phase1_timeout_ticks = (uint32_t)cJSON_GetArrayItem(turn, 2)->valuedouble;
-            state->track_config.turn_phase2_outer_rpm = cJSON_GetArrayItem(turn, 3)->valuedouble;
-            state->track_config.turn_phase2_inner_rpm = cJSON_GetArrayItem(turn, 4)->valuedouble;
-            state->track_config.turn_phase2_center_threshold = cJSON_GetArrayItem(turn, 5)->valuedouble;
+            t0 = cJSON_GetArrayItem(turn, 0)->valuedouble;
+            t1 = cJSON_GetArrayItem(turn, 1)->valuedouble;
+            t2 = (uint32_t)cJSON_GetArrayItem(turn, 2)->valuedouble;
+            t3 = cJSON_GetArrayItem(turn, 3)->valuedouble;
+            t4 = cJSON_GetArrayItem(turn, 4)->valuedouble;
+            t5 = cJSON_GetArrayItem(turn, 5)->valuedouble;
+            update_turn = true;
+          }
+
+          portENTER_CRITICAL(&state->spinlock);
+          if (update_speed) {
+            state->track_config.v_ref_normal = s0;
+            state->track_config.v_ref_turn = s1;
+            state->track_config.slow_zone_start_mm = s2;
+            state->track_config.slow_zone_end_mm = s3;
+          }
+          if (update_turn) {
+            state->track_config.turn_phase1_outer_rpm = t0;
+            state->track_config.turn_phase1_inner_rpm = t1;
+            state->track_config.turn_phase1_timeout_ticks = t2;
+            state->track_config.turn_phase2_outer_rpm = t3;
+            state->track_config.turn_phase2_inner_rpm = t4;
+            state->track_config.turn_phase2_center_threshold = t5;
           }
           portEXIT_CRITICAL(&state->spinlock);
           ESP_LOGI(TAG, "Applied new Track Config to RAM.");
@@ -488,7 +535,7 @@ extern "C" void app_main() {
       .out_max = 85.0f,      // Maximum PWM duty cycle limit is 85%
       .out_min = 0.0f,       // Enforce >= 0 for safety against reverse pulses
       .integral_max = 85.0f, // Corresponding Integral Anti-Windup limit
-      .max_accel_units_s2 = 1000.0f};
+      .max_accel_units_s2 = 5000.0f};
   velocity_pid_config_t pid_cfg_r = {
       .kp = robot_state.physical_config.kp_r,
       .ki = robot_state.physical_config.ki_r,
@@ -496,7 +543,7 @@ extern "C" void app_main() {
       .out_max = 85.0f,
       .out_min = 0.0f, // Enforce >= 0 for safety against reverse pulses
       .integral_max = 85.0f,
-      .max_accel_units_s2 = 1000.0f};
+      .max_accel_units_s2 = 5000.0f};
   pid_left.init(pid_cfg_l);
   pid_right.init(pid_cfg_r);
 
