@@ -1,11 +1,6 @@
 % PID left motor controller
 function [int_el, vl, pre_nl] = pid_motor_left(er1l, wl, pre_nl, int_el)
-    global ul;
-    kp1 = 1.6036;
-    ki1 = 23.765;
-    kd1 = 0.0088;
-
-    r = 65/2;
+    global ul kp1 ki1 kd1 r;
     tsamppid = 0.03;
     
     er2l = er1l;

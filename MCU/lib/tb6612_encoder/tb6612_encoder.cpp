@@ -163,9 +163,9 @@ esp_err_t Tb6612Encoder::set_duty_cycle(float duty_cycle_percent) {
         gpio_set_level(static_cast<gpio_num_t>(_in1_gpio), 0);
         gpio_set_level(static_cast<gpio_num_t>(_in2_gpio), 1);
     } else {
-        // Coast / Stop (or Brake if user logic prefers IN1=1, IN2=1)
-        gpio_set_level(static_cast<gpio_num_t>(_in1_gpio), 0);
-        gpio_set_level(static_cast<gpio_num_t>(_in2_gpio), 0);
+        // Short Brake (Electromagnetic motor locking)
+        gpio_set_level(static_cast<gpio_num_t>(_in1_gpio), 1);
+        gpio_set_level(static_cast<gpio_num_t>(_in2_gpio), 1);
     }
 
     float abs_duty = (duty_cycle_percent < 0.0f) ? -duty_cycle_percent : duty_cycle_percent;

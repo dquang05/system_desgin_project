@@ -69,6 +69,7 @@ struct SharedRobotState {
     float actual_rpm_right;
     float manual_cmd_l; // Target RPM for left motor in Manual Mode
     float manual_cmd_r; // Target RPM for right motor in Manual Mode
+    float current_e2;   // Current cross-track error
     float loadcell_weight;
     LineSensorCalib line_calib;
     RobotPhysicalConfig physical_config;

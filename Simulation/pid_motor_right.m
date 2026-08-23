@@ -1,11 +1,6 @@
 % PID right motor controller
 function [int_er, vr, pre_nr] = pid_motor_right(er1r, wr, pre_nr, int_er)
-    global ur;
-    kp2 = 1.5792;
-    ki2 = 26.1527;
-    kd2 = 0.0076;
-
-    r = 65/2;
+    global ur kp2 ki2 kd2 r;
     tsamppid = 0.03;
 
     er2r = er1r;

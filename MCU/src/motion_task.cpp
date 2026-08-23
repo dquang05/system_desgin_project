@@ -13,8 +13,8 @@
 #include "../include/shared_state.hpp"
 #include "../lib/tb6612_encoder/tb6612_encoder.hpp"
 #include "../lib/velocity_pid/velocity_pid.hpp"
-#include <esp_timer.h>
 #include <driver/gpio.h>
+#include <esp_timer.h>
 
 #if CONTROL_MODE == 1
 static ManualControl motion_controller;
@@ -38,12 +38,21 @@ extern VelocityPid pid_right;
  */
 void motion_task_routine(void *pvParameters) {
   SharedRobotState *state = static_cast<SharedRobotState *>(pvParameters);
+  
+  float target_rpm_l = 0.0f;
+  float target_rpm_r = 0.0f;
+  float current_e2 = 0.0f;
+
+  bool prev_system_running = false;
+
   TickType_t last_wake_time = xTaskGetTickCount();
   const TickType_t freq_ticks = pdMS_TO_TICKS(10); // 100Hz
 
   int64_t last_time_us = esp_timer_get_time();
   int64_t last_pulse_l = 0;
   int64_t last_pulse_r = 0;
+  int64_t enc_offset_l = 0;
+  int64_t enc_offset_r = 0;
 
   motor_left.get_pulse_count(last_pulse_l);
   motor_right.get_pulse_count(last_pulse_r);
@@ -119,20 +128,23 @@ void motion_task_routine(void *pvParameters) {
       portEXIT_CRITICAL(&state->spinlock);
 
       // Pass the *raw* un-decimated pulses so we get accurate displacement
-      snap.encoder_l = current_pulse_l;
-      snap.encoder_r = current_pulse_r;
+      int64_t relative_pulse_l = current_pulse_l - enc_offset_l;
+      int64_t relative_pulse_r = current_pulse_r - enc_offset_r;
+      snap.encoder_l = relative_pulse_l;
+      snap.encoder_r = relative_pulse_r;
 
       // Compute strategy (Manual or Autonomous)
       MotionOutput m_out = motion_controller.compute(snap, dt_s, loop_counter);
       target_rpm_l = m_out.target_rpm_left;
       target_rpm_r = m_out.target_rpm_right;
+      current_e2 = m_out.current_e2;
 
       // #if CONTROL_MODE == 1
       //       // DEBUG MODE: Bypass PID, treat manual target as raw PWM duty
       //       cycle (-100 to 100) float duty_l = target_rpm_l; float duty_r =
       //       target_rpm_r;
       // #else
-      
+
       bool current_system_running = false;
       bool current_soft_stop_req = false;
       portENTER_CRITICAL(&state->spinlock);
@@ -143,65 +155,75 @@ void motion_task_routine(void *pvParameters) {
       // 1. BOOT Button Polling
       static uint32_t btn_press_ticks = 0;
       if (gpio_get_level(GPIO_NUM_0) == 0) {
-          btn_press_ticks++;
+        btn_press_ticks++;
       } else {
-          // If released after a short press (debounce ~5 ticks = 50ms)
-          if (btn_press_ticks > 5) {
-              portENTER_CRITICAL(&state->spinlock);
-              state->system_running = true; // Button ONLY starts the car
-              state->soft_stop_request = false;
-              current_system_running = true;
-              current_soft_stop_req = false;
-              portEXIT_CRITICAL(&state->spinlock);
-              
-              motion_controller.reset();
-          }
-          btn_press_ticks = 0;
+        // If released after a short press (debounce ~5 ticks = 50ms)
+        if (btn_press_ticks > 5) {
+          portENTER_CRITICAL(&state->spinlock);
+          state->system_running = true; // Button ONLY starts the car
+          state->soft_stop_request = false;
+          current_system_running = true;
+          current_soft_stop_req = false;
+          portEXIT_CRITICAL(&state->spinlock);
+        }
+        btn_press_ticks = 0;
       }
+
+      // 2. Handle System Start (Rising Edge)
+      if (current_system_running && !prev_system_running) {
+        enc_offset_l = current_pulse_l;
+        enc_offset_r = current_pulse_r;
+        motion_controller.reset();
+        ESP_LOGI(TAG, "System Started: Encoders and Controller reset.");
+      }
+      prev_system_running = current_system_running;
 
       float duty_l = 0.0f;
       float duty_r = 0.0f;
 
       if (!current_system_running) {
-          // IDLE MODE: Coasting
-          pid_left.reset();
-          pid_right.reset();
-          target_rpm_l = 0.0f;
-          target_rpm_r = 0.0f;
-          duty_l = 0.0f;
-          duty_r = 0.0f;
+        // IDLE MODE: Coasting
+        pid_left.reset();
+        pid_right.reset();
+        target_rpm_l = 0.0f;
+        target_rpm_r = 0.0f;
+        duty_l = 0.0f;
+        duty_r = 0.0f;
       } else {
-          // RUNNING MODE
-          MotionOutput m_out;
-          
-          if (current_soft_stop_req) {
-              // Soft stop requested by UDP
-              m_out.target_rpm_left = 0.0f;
-              m_out.target_rpm_right = 0.0f;
-          } else {
-              m_out = motion_controller.compute(snap, dt_s, loop_counter);
-          }
-          
-          target_rpm_l = m_out.target_rpm_left;
-          target_rpm_r = m_out.target_rpm_right;
-          
-          // Check if we have successfully soft-stopped (either by UDP or by LineTracker auto-stop)
-          if (target_rpm_l == 0.0f && target_rpm_r == 0.0f) {
-              if (std::abs(rpm_l) < 5.0f && std::abs(rpm_r) < 5.0f) {
-                  // Fully stopped, go to IDLE
-                  portENTER_CRITICAL(&state->spinlock);
-                  state->system_running = false;
-                  state->soft_stop_request = false;
-                  current_system_running = false;
-                  portEXIT_CRITICAL(&state->spinlock);
-              }
-          }
-          
-          pid_left.set_target_velocity(target_rpm_l);
-          pid_right.set_target_velocity(target_rpm_r);
+        // RUNNING MODE
+        MotionOutput m_out;
 
-          duty_l = pid_left.compute(rpm_l, dt_s);
-          duty_r = pid_right.compute(rpm_r, dt_s);
+        if (current_soft_stop_req) {
+          // Soft stop requested by UDP
+          m_out.target_rpm_left = 0.0f;
+          m_out.target_rpm_right = 0.0f;
+        } else {
+          m_out = motion_controller.compute(snap, dt_s, loop_counter);
+          current_e2 = m_out.current_e2;
+        }
+
+        target_rpm_l = m_out.target_rpm_left;
+        target_rpm_r = m_out.target_rpm_right;
+
+        // Check if we have successfully soft-stopped (ONLY if soft stop was
+        // requested)
+        if (current_soft_stop_req && target_rpm_l == 0.0f &&
+            target_rpm_r == 0.0f) {
+          if (std::abs(rpm_l) < 5.0f && std::abs(rpm_r) < 5.0f) {
+            // Fully stopped, go to IDLE
+            portENTER_CRITICAL(&state->spinlock);
+            state->system_running = false;
+            state->soft_stop_request = false;
+            current_system_running = false;
+            portEXIT_CRITICAL(&state->spinlock);
+          }
+        }
+        /// \note Keep PID tracking active even when target = 0 so PID can generate positive/negative duty to brake the vehicle,
+        /// utilizing the Slew Rate Limiter and Deadband features of VelocityPID.
+        pid_left.set_target_velocity(target_rpm_l);
+        pid_right.set_target_velocity(target_rpm_r);
+        duty_l = pid_left.compute(rpm_l, dt_s);
+        duty_r = pid_right.compute(rpm_r, dt_s);
       }
       // #endif
 
@@ -210,14 +232,15 @@ void motion_task_routine(void *pvParameters) {
 
       // Atomically update state for the Telemetry Task
       portENTER_CRITICAL(&state->spinlock);
-      state->encoder_left = current_pulse_l;
-      state->encoder_right = current_pulse_r;
+      state->encoder_left = relative_pulse_l;
+      state->encoder_right = relative_pulse_r;
       state->pwm_left = duty_l;
       state->pwm_right = duty_r;
       state->target_rpm_left = target_rpm_l;
       state->target_rpm_right = target_rpm_r;
       state->actual_rpm_left = rpm_l;
       state->actual_rpm_right = rpm_r;
+      state->current_e2 = current_e2;
       portEXIT_CRITICAL(&state->spinlock);
     }
 

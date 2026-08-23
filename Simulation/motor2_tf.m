@@ -5,4 +5,3 @@ function dwdt=motor2_tf(t,w)
     a = 12.94;
     dwdt = (-a*w+K*ur);
 end
-   

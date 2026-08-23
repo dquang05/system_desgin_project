@@ -10,7 +10,12 @@
 #include "nvs_flash.h"
 #include <cstring>
 
-#define CHECK_RET(x) do { esp_err_t _err = (x); if (_err != ESP_OK) return _err; } while(0)
+#define CHECK_RET(x)                                                           \
+  do {                                                                         \
+    esp_err_t _err = (x);                                                      \
+    if (_err != ESP_OK)                                                        \
+      return _err;                                                             \
+  } while (0)
 
 namespace wifi_manager {
 
@@ -23,9 +28,7 @@ WifiManager::WifiManager()
   _wifi_event_group = xEventGroupCreateStatic(&_event_group_buffer);
 }
 
-WifiManager::~WifiManager() {
-  deinit();
-}
+WifiManager::~WifiManager() { deinit(); }
 
 void WifiManager::wifi_event_handler(void *arg, esp_event_base_t event_base,
                                      int32_t event_id, void *event_data) {
@@ -36,8 +39,10 @@ void WifiManager::wifi_event_handler(void *arg, esp_event_base_t event_base,
     esp_wifi_connect();
   } else if (event_base == WIFI_EVENT &&
              event_id == WIFI_EVENT_STA_DISCONNECTED) {
+    xEventGroupClearBits(instance->_wifi_event_group,
+                         WIFI_CONNECTED_BIT); // Always clear connected bit
     if (instance->_is_intentional_stop) {
-      xEventGroupClearBits(instance->_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
+      xEventGroupClearBits(instance->_wifi_event_group, WIFI_FAIL_BIT);
       ESP_LOGI(TAG, "Wi-Fi disconnected intentionally.");
     } else if (instance->_retry_count < instance->_config.max_retry) {
       esp_wifi_connect();
@@ -99,24 +104,28 @@ esp_err_t WifiManager::init(const WifiConfig &config) {
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
   CHECK_RET(esp_wifi_init(&cfg));
 
-  CHECK_RET(esp_event_handler_instance_register(
-      WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, this,
-      &_instance_any_id));
-  CHECK_RET(esp_event_handler_instance_register(
-      IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, this,
-      &_instance_got_ip));
+  CHECK_RET(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
+                                                &wifi_event_handler, this,
+                                                &_instance_any_id));
+  CHECK_RET(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
+                                                &wifi_event_handler, this,
+                                                &_instance_got_ip));
 
   wifi_config_t wifi_cfg = {};
   if (_config.mode == WifiMode::MODE_STA) {
-    std::strncpy(reinterpret_cast<char*>(wifi_cfg.sta.ssid), _config.ssid, sizeof(wifi_cfg.sta.ssid));
-    std::strncpy(reinterpret_cast<char*>(wifi_cfg.sta.password), _config.password, sizeof(wifi_cfg.sta.password));
+    std::strncpy(reinterpret_cast<char *>(wifi_cfg.sta.ssid), _config.ssid,
+                 sizeof(wifi_cfg.sta.ssid));
+    std::strncpy(reinterpret_cast<char *>(wifi_cfg.sta.password),
+                 _config.password, sizeof(wifi_cfg.sta.password));
     wifi_cfg.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
 
     CHECK_RET(esp_wifi_set_mode(WIFI_MODE_STA));
     CHECK_RET(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
   } else {
-    std::strncpy(reinterpret_cast<char*>(wifi_cfg.ap.ssid), _config.ssid, sizeof(wifi_cfg.ap.ssid));
-    std::strncpy(reinterpret_cast<char*>(wifi_cfg.ap.password), _config.password, sizeof(wifi_cfg.ap.password));
+    std::strncpy(reinterpret_cast<char *>(wifi_cfg.ap.ssid), _config.ssid,
+                 sizeof(wifi_cfg.ap.ssid));
+    std::strncpy(reinterpret_cast<char *>(wifi_cfg.ap.password),
+                 _config.password, sizeof(wifi_cfg.ap.password));
     wifi_cfg.ap.ssid_len = std::strlen(_config.ssid);
     wifi_cfg.ap.max_connection = 4;
     wifi_cfg.ap.authmode = WIFI_AUTH_WPA_WPA2_PSK;
@@ -135,15 +144,18 @@ esp_err_t WifiManager::init(const WifiConfig &config) {
 }
 
 esp_err_t WifiManager::deinit() {
-  if (!_initialized) return ESP_OK;
+  if (!_initialized)
+    return ESP_OK;
 
   esp_wifi_stop();
-  
-  esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, _instance_got_ip);
-  esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, _instance_any_id);
-  
+
+  esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP,
+                                        _instance_got_ip);
+  esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID,
+                                        _instance_any_id);
+
   esp_wifi_deinit();
-  
+
   if (_netif) {
     esp_netif_destroy_default_wifi(_netif);
     _netif = nullptr;
@@ -163,7 +175,7 @@ void WifiManager::start() {
   if (_initialized) {
     _is_intentional_stop = false;
     _retry_count = 0;
-    xEventGroupClearBits(_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
+    xEventGroupClearBits(_wifi_event_group, WIFI_FAIL_BIT);
     esp_wifi_start();
     ESP_LOGI(TAG, "Wi-Fi started.");
   }
@@ -173,12 +185,12 @@ void WifiManager::stop() {
   if (_initialized) {
     _is_intentional_stop = true;
     esp_wifi_stop();
-    
+
     if (_udp_sock >= 0) {
       close(_udp_sock);
       _udp_sock = -1;
     }
-    
+
     ESP_LOGI(TAG, "Wi-Fi stopped.");
   }
 }
@@ -201,7 +213,8 @@ bool WifiManager::wait_for_connection(uint32_t timeout_ms) {
 }
 
 bool WifiManager::is_connected() const {
-  if (!_initialized) return false;
+  if (!_initialized)
+    return false;
   EventBits_t bits = xEventGroupGetBits(_wifi_event_group);
   return (bits & WIFI_CONNECTED_BIT) != 0;
 }
@@ -230,7 +243,7 @@ bool WifiManager::send_log_data(const char *ip, uint16_t port,
                    sizeof(dest_addr));
   if (err < 0) {
     ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
-    // Do not close socket on transient network errors (like ENOMEM) 
+    // Do not close socket on transient network errors (like ENOMEM)
     // to prevent overhead and resource exhaustion. Drop packet instead.
     return false;
   }

@@ -35,7 +35,7 @@ public:
     /**
      * @brief Resets the state machine and odometry for a new run.
      */
-    void reset();
+    void reset() override;
 
 private:
     LineTracker _line_tracker;
@@ -53,6 +53,7 @@ private:
     
     // Recovery Phase timers/counters
     uint32_t _recovery_ticks{0};
+    float _last_e2{0.0f};
 
     // Decimation logic for line tracking execution frequency
     static constexpr uint32_t PID_EXEC_DECIMATION = 5; 

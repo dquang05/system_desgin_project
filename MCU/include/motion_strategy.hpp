@@ -4,6 +4,7 @@
 struct MotionOutput {
     float target_rpm_left;
     float target_rpm_right;
+    float current_e2;
 };
 
 struct StateSnapshot {
@@ -31,4 +32,9 @@ public:
      * @return MotionOutput The target RPMs to be fed into the Velocity PID controllers.
      */
     virtual MotionOutput compute(const StateSnapshot& state, float dt_s, uint32_t loop_counter) = 0;
+    
+    /**
+     * @brief Resets the motion strategy state.
+     */
+    virtual void reset() {}
 };

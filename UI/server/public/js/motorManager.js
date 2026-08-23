@@ -26,6 +26,15 @@ export class MotorManager {
             sseRight: 0
         };
         
+        this.jerkDetection = {
+            isActive: false,
+            startTime: 0,
+            baselineWeight: 0,
+            lastJerkDuration: 0,
+            threshold: 200, // Detect spike > 200g
+            recoveryThreshold: 50 // Recover when within 50g of baseline
+        };
+        
         this.stepTracking = {
             left: { target: 0, maxAct: 0, minAct: 0, inStep: false },
             right: { target: 0, maxAct: 0, minAct: 0, inStep: false }
@@ -76,7 +85,8 @@ export class MotorManager {
             overshootRVal: document.getElementById('overshoot-r-val'),
             sseRVal: document.getElementById('sse-r-val'),
             
-            weightVal: document.getElementById('weight-val')
+            weightVal: document.getElementById('weight-val'),
+            jerkDurationVal: document.getElementById('jerk-duration-val')
         };
     }
 
@@ -234,6 +244,27 @@ export class MotorManager {
             }
 
             if (obj.weight !== undefined) {
+                let currentWeight = obj.weight;
+
+                if (!this.jerkDetection.isActive) {
+                    // Check for sudden spike
+                    if (currentWeight - this.state.weight >= this.jerkDetection.threshold) {
+                        this.jerkDetection.isActive = true;
+                        this.jerkDetection.startTime = performance.now();
+                        this.jerkDetection.baselineWeight = this.state.weight; // previous weight
+                    }
+                } else {
+                    // Check for recovery
+                    if (currentWeight <= this.jerkDetection.baselineWeight + this.jerkDetection.recoveryThreshold) {
+                        this.jerkDetection.isActive = false;
+                        this.jerkDetection.lastJerkDuration = performance.now() - this.jerkDetection.startTime;
+                        this.needsUpdate = true;
+                    } else if (performance.now() - this.jerkDetection.startTime > 5000) {
+                        // Timeout after 5 seconds to reset if it's a permanent weight change
+                        this.jerkDetection.isActive = false;
+                    }
+                }
+
                 this.state.weight = obj.weight;
                 updated = true;
             }
@@ -333,6 +364,9 @@ export class MotorManager {
 
         if (this.elements.weightVal) {
             this.elements.weightVal.textContent = this.state.weight.toFixed(2);
+        }
+        if (this.elements.jerkDurationVal) {
+            this.elements.jerkDurationVal.textContent = this.jerkDetection.lastJerkDuration.toFixed(0);
         }
 
         // Update charts natively

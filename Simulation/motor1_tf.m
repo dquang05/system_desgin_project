@@ -3,6 +3,5 @@ function dwdt=motor1_tf(t,w)
     global ul
     K = 14.85;
     a = 11.5;
-    dwdt = (-a*w+K*ul);
+    dwdt = (-a*w+K*ul); %G = K/(s + a)
  end
-   

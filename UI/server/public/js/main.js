@@ -9,6 +9,7 @@ import { ChartManager } from './chartManager.js';
 import { MotorManager } from './motorManager.js';
 import { TuningManager } from './tuningManager.js';
 import { ManualDriveManager } from './manualDriveManager.js';
+import { DataRecordingManager } from './dataRecordingManager.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // UI Elements
@@ -28,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const motorMgr = new MotorManager();
     const tuningMgr = new TuningManager(socketMgr);
     const manualDriveMgr = new ManualDriveManager(socketMgr);
+    const dataRecMgr = new DataRecordingManager(socketMgr);
     
     // Setup Socket Listeners
     socketMgr.onStatusChange((state) => {
@@ -49,6 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chartMgr.processLog(logEntry);
         motorMgr.processLog(logEntry);
         tuningMgr.processLog(logEntry);
+        dataRecMgr.processLog(logEntry);
     });
 
     socketMgr.onErrorMsg((msg) => {
@@ -79,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
             chartMgr.setActive(targetId === 'tab-adc');
             motorMgr.setActive(targetId === 'tab-motor');
             tuningMgr.setActive(targetId === 'tab-motor');
-            // manualDriveMgr doesn't have an setActive method, and it doesn't need to poll logs
+            // manualDriveMgr & dataRecMgr don't need setActive polling for now
         });
     });
 });

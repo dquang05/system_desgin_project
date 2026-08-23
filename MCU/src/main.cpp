@@ -28,6 +28,33 @@
 
 static const char *TAG = "ORCHESTRATOR";
 
+/**
+ * ============================================================================
+ * \todo Architecture: IMPROVE Y-JUNCTION TURNING LOGIC USING "SENSOR MASKING"
+ * ============================================================================
+ * \par Current Implementation:
+ * Turning at the Y-junction currently uses a "Hard Turn" (forcing RPM for a
+ * fixed duration). This is an open-loop approach and is prone to errors due to
+ * wheel slip or low battery.
+ *
+ * \par Proposed Improvement (Sensor Masking / Centroid Shifting):
+ * 1. Update the `LineTracker::compute_e2()` function to accept an additional
+ * `TurnDirection` parameter.
+ * 2. For LEFT turn (1kg payload):
+ *    - Force the 2 right sensors to 0 (white): `adc_raw[3] = 0; adc_raw[4] = 0;`
+ * 3. For RIGHT turn (2kg payload):
+ *    - Force the 2 left sensors to 0 (white): `adc_raw[0] = 0; adc_raw[1] = 0;`
+ *
+ * \par Expected Result:
+ * The centroid calculation `x_centroid` in the PID will automatically shift
+ * towards the desired branch. The vehicle will smoothly track the line through
+ * the junction using PID (closed-loop) instead of moving blindly.
+ *
+ * \note The masking state needs to be maintained for a short time/distance
+ * (e.g., 50 ticks) until the vehicle has fully entered the branch, before unmasking.
+ * ============================================================================
+ */
+
 // Global Shared State
 SharedRobotState robot_state = {
     .spinlock = portMUX_INITIALIZER_UNLOCKED,
@@ -62,26 +89,23 @@ SharedRobotState robot_state = {
                         .kp_r = DEFAULT_KP_R,
                         .ki_r = DEFAULT_KI_R,
                         .kd_r = DEFAULT_KD_R},
-    .track_config = {
-        .encoder_ppr = 341.2f,
-        .v_ref_normal = 200.0f,
-        .v_ref_turn = 100.0f,
-        .slow_zone_start_mm = 250.0f,
-        .slow_zone_end_mm = 2250.0f,
-        .turn_phase1_outer_rpm = 50.0f,
-        .turn_phase1_inner_rpm = 0.0f,
-        .turn_phase1_timeout_ticks = 20, // 20 ticks * 50ms = 1000ms
-        .turn_phase2_outer_rpm = 30.0f,
-        .turn_phase2_inner_rpm = 0.0f,
-        .turn_phase2_center_threshold = 2800.0f,
-        .loadcell_type1_min = 800.0f,
-        .loadcell_type1_max = 1200.0f,
-        .loadcell_type2_min = 1800.0f,
-        .loadcell_type2_max = 2200.0f
-    },
+    .track_config = {.encoder_ppr = 341.2f,
+                     .v_ref_normal = 200.0f,
+                     .v_ref_turn = 100.0f,
+                     .slow_zone_start_mm = 250.0f,
+                     .slow_zone_end_mm = 2250.0f,
+                     .turn_phase1_outer_rpm = 50.0f,
+                     .turn_phase1_inner_rpm = 0.0f,
+                     .turn_phase1_timeout_ticks = 20, // 20 ticks * 50ms = 1000ms
+                     .turn_phase2_outer_rpm = 30.0f,
+                     .turn_phase2_inner_rpm = 0.0f,
+                     .turn_phase2_center_threshold = 2800.0f,
+                     .loadcell_type1_min = 800.0f,
+                     .loadcell_type1_max = 1200.0f,
+                     .loadcell_type2_min = 1800.0f,
+                     .loadcell_type2_max = 2200.0f},
     .system_running = false,
-    .soft_stop_request = false
-};
+    .soft_stop_request = false};
 
 // Global Drivers (Workers)
 wifi_manager::WifiManager wifi;
@@ -158,7 +182,8 @@ void wifi_toggle_task(void *pvParameters) {
   io_conf.intr_type = GPIO_INTR_DISABLE;
   gpio_config(&io_conf);
 
-  bool wifi_is_running = false; // Initially not started
+  bool wifi_is_running =
+      true; // Wi-Fi is already started in app_main by wifi.init()
 
   while (true) {
     int switch_state = gpio_get_level(PIN_WIFI_SWITCH);
@@ -181,15 +206,17 @@ void wifi_toggle_task(void *pvParameters) {
 }
 
 struct NvsPidData {
-    float kp, kd, pid_tau;
-    float kp_l, ki_l, kd_l;
-    float kp_r, ki_r, kd_r;
+  float kp, kd, pid_tau;
+  float kp_l, ki_l, kd_l;
+  float kp_r, ki_r, kd_r;
+  float v_ref;
 };
 
 /**
  * @brief Loads PID parameters from NVS flash memory.
  *
- * @param state Reference to the global SharedRobotState where config will be stored.
+ * @param state Reference to the global SharedRobotState where config will be
+ * stored.
  */
 void load_nvs_params(SharedRobotState &state) {
   nvs_handle_t my_handle;
@@ -213,6 +240,7 @@ void load_nvs_params(SharedRobotState &state) {
     state.physical_config.kp_r = pid_data.kp_r;
     state.physical_config.ki_r = pid_data.ki_r;
     state.physical_config.kd_r = pid_data.kd_r;
+    state.physical_config.v_ref = pid_data.v_ref;
     ESP_LOGI(TAG, "Loaded PID params from NVS successfully.");
   } else {
     ESP_LOGW(TAG, "Failed to load PID params from NVS (using defaults).");
@@ -234,17 +262,16 @@ void save_nvs_params(const SharedRobotState &state) {
     return;
   }
 
-  NvsPidData pid_data = {
-      .kp = state.physical_config.kp,
-      .kd = state.physical_config.kd,
-      .pid_tau = state.physical_config.pid_tau,
-      .kp_l = state.physical_config.kp_l,
-      .ki_l = state.physical_config.ki_l,
-      .kd_l = state.physical_config.kd_l,
-      .kp_r = state.physical_config.kp_r,
-      .ki_r = state.physical_config.ki_r,
-      .kd_r = state.physical_config.kd_r
-  };
+  NvsPidData pid_data = {.kp = state.physical_config.kp,
+                         .kd = state.physical_config.kd,
+                         .pid_tau = state.physical_config.pid_tau,
+                         .kp_l = state.physical_config.kp_l,
+                         .ki_l = state.physical_config.ki_l,
+                         .kd_l = state.physical_config.kd_l,
+                         .kp_r = state.physical_config.kp_r,
+                         .ki_r = state.physical_config.ki_r,
+                         .kd_r = state.physical_config.kd_r,
+                         .v_ref = state.physical_config.v_ref};
 
   err = nvs_set_blob(my_handle, "pid_cfg", &pid_data, sizeof(NvsPidData));
   if (err == ESP_OK) {
@@ -339,7 +366,8 @@ void udp_receiver_task(void *pvParameters) {
           cJSON *pid_t = cJSON_GetObjectItemCaseSensitive(json, "pid_T");
           cJSON *v_ref_json = cJSON_GetObjectItemCaseSensitive(json, "v_ref");
 
-          bool update_l = false, update_r = false, update_t = false, update_v = false;
+          bool update_l = false, update_r = false, update_t = false,
+               update_v = false;
           float l_p, l_i, l_d;
           float r_p, r_i, r_d;
           float t_p, t_d, t_tau;
@@ -398,53 +426,6 @@ void udp_receiver_task(void *pvParameters) {
 
           ESP_LOGI(TAG, "Applied new PID tunings to RAM.");
         }
-      } else if (strcmp(cmd->valuestring, "tune_track") == 0) {
-        if (is_running) {
-          ESP_LOGW(TAG, "Cannot tune track config while system is running!");
-        } else {
-          cJSON *speed = cJSON_GetObjectItemCaseSensitive(json, "speed");
-          cJSON *turn = cJSON_GetObjectItemCaseSensitive(json, "turn");
-          
-          bool update_speed = false, update_turn = false;
-          float s0, s1, s2, s3;
-          float t0, t1, t3, t4, t5;
-          uint32_t t2;
-
-          if (cJSON_IsArray(speed) && cJSON_GetArraySize(speed) == 4) {
-            s0 = cJSON_GetArrayItem(speed, 0)->valuedouble;
-            s1 = cJSON_GetArrayItem(speed, 1)->valuedouble;
-            s2 = cJSON_GetArrayItem(speed, 2)->valuedouble;
-            s3 = cJSON_GetArrayItem(speed, 3)->valuedouble;
-            update_speed = true;
-          }
-          if (cJSON_IsArray(turn) && cJSON_GetArraySize(turn) == 6) {
-            t0 = cJSON_GetArrayItem(turn, 0)->valuedouble;
-            t1 = cJSON_GetArrayItem(turn, 1)->valuedouble;
-            t2 = (uint32_t)cJSON_GetArrayItem(turn, 2)->valuedouble;
-            t3 = cJSON_GetArrayItem(turn, 3)->valuedouble;
-            t4 = cJSON_GetArrayItem(turn, 4)->valuedouble;
-            t5 = cJSON_GetArrayItem(turn, 5)->valuedouble;
-            update_turn = true;
-          }
-
-          portENTER_CRITICAL(&state->spinlock);
-          if (update_speed) {
-            state->track_config.v_ref_normal = s0;
-            state->track_config.v_ref_turn = s1;
-            state->track_config.slow_zone_start_mm = s2;
-            state->track_config.slow_zone_end_mm = s3;
-          }
-          if (update_turn) {
-            state->track_config.turn_phase1_outer_rpm = t0;
-            state->track_config.turn_phase1_inner_rpm = t1;
-            state->track_config.turn_phase1_timeout_ticks = t2;
-            state->track_config.turn_phase2_outer_rpm = t3;
-            state->track_config.turn_phase2_inner_rpm = t4;
-            state->track_config.turn_phase2_center_threshold = t5;
-          }
-          portEXIT_CRITICAL(&state->spinlock);
-          ESP_LOGI(TAG, "Applied new Track Config to RAM.");
-        }
       } else if (strcmp(cmd->valuestring, "save") == 0) {
         SharedRobotState local_state;
         portENTER_CRITICAL(&state->spinlock);
@@ -453,7 +434,8 @@ void udp_receiver_task(void *pvParameters) {
         save_nvs_params(local_state);
       } else if (strcmp(cmd->valuestring, "manual_drive") == 0) {
         if (is_running) {
-          ESP_LOGW(TAG, "Cannot manual drive while autonomous system is running!");
+          ESP_LOGW(TAG,
+                   "Cannot manual drive while autonomous system is running!");
         } else {
           cJSON *rpm_l = cJSON_GetObjectItemCaseSensitive(json, "rpm_l");
           cJSON *rpm_r = cJSON_GetObjectItemCaseSensitive(json, "rpm_r");

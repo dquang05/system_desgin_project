@@ -20,6 +20,7 @@
                 <button class="tab-btn active" data-target="tab-main">Main Logs</button>
                 <button class="tab-btn" data-target="tab-adc">ADC Chart</button>
                 <button class="tab-btn" data-target="tab-motor">Motor Dashboard</button>
+                <button class="tab-btn" data-target="tab-analysis">Analysis</button>
             </div>
 
             <div class="status-indicator">
@@ -226,6 +227,11 @@
                                 <span class="tuning-active" id="active-kd-t">0.000</span>
                                 <input type="number" id="input-kd-t" step="0.001" value="0.000">
                             </div>
+                            <div class="tuning-row" style="margin-top: 15px; border-top: 1px solid var(--border); padding-top: 15px;">
+                                <span class="tuning-label" style="font-weight: 600; color: var(--accent);">Velocity (v_ref)</span>
+                                <span class="tuning-active" id="active-v-ref">0.0</span>
+                                <input type="number" id="input-v-ref" step="10" value="200.0">
+                            </div>
                         </div>
                     </div>
 
@@ -236,76 +242,54 @@
                             <span class="stat-label">Current Weight</span>
                             <span class="stat-value" id="weight-val">0.00</span>
                         </div>
+                        <div class="motor-stat mt-15">
+                            <span class="stat-label">Jerk Duration (>200g)</span>
+                            <span class="stat-value"><span id="jerk-duration-val">0</span> ms</span>
+                        </div>
                         <div class="chart-container" style="height: 200px; margin-top: 15px; padding: 0;">
                             <canvas id="weight-chart"></canvas>
                         </div>
                     </div>
                 </div>
 
-                <!-- Track Configuration -->
-                <div class="motor-grid" style="margin-top: 24px;">
-                    <div class="motor-card" style="width: 100%;">
-                        <h3>Track Configuration</h3>
-                        <div style="display: flex; gap: 20px; flex-wrap: wrap;">
-                            <!-- Speed Config -->
-                            <div style="flex: 1; min-width: 300px;">
-                                <h4 style="color: var(--text-secondary); margin-bottom: 10px;">Speed Settings</h4>
-                                <div class="tuning-row">
-                                    <span class="tuning-label">Normal Speed (v_ref_normal)</span>
-                                    <input type="number" id="input-track-v-normal" step="10" value="200.0">
-                                </div>
-                                <div class="tuning-row">
-                                    <span class="tuning-label">Turn Speed (v_ref_turn)</span>
-                                    <input type="number" id="input-track-v-turn" step="10" value="100.0">
-                                </div>
-                                <div class="tuning-row">
-                                    <span class="tuning-label">Slow Zone Start (mm)</span>
-                                    <input type="number" id="input-track-slow-start" step="10" value="250.0">
-                                </div>
-                                <div class="tuning-row">
-                                    <span class="tuning-label">Slow Zone End (mm)</span>
-                                    <input type="number" id="input-track-slow-end" step="10" value="2250.0">
-                                </div>
-                            </div>
-                            
-                            <!-- Turn Config -->
-                            <div style="flex: 1; min-width: 300px;">
-                                <h4 style="color: var(--text-secondary); margin-bottom: 10px;">Turn Settings</h4>
-                                <div class="tuning-row">
-                                    <span class="tuning-label">Phase 1: Outer RPM</span>
-                                    <input type="number" id="input-track-p1-out" step="5" value="50.0">
-                                </div>
-                                <div class="tuning-row">
-                                    <span class="tuning-label">Phase 1: Inner RPM</span>
-                                    <input type="number" id="input-track-p1-in" step="5" value="0.0">
-                                </div>
-                                <div class="tuning-row">
-                                    <span class="tuning-label">Phase 1: Timeout (ticks)</span>
-                                    <input type="number" id="input-track-p1-timeout" step="1" value="20">
-                                </div>
-                                <div class="tuning-row">
-                                    <span class="tuning-label">Phase 2: Outer RPM</span>
-                                    <input type="number" id="input-track-p2-out" step="5" value="30.0">
-                                </div>
-                                <div class="tuning-row">
-                                    <span class="tuning-label">Phase 2: Inner RPM</span>
-                                    <input type="number" id="input-track-p2-in" step="5" value="0.0">
-                                </div>
-                                <div class="tuning-row">
-                                    <span class="tuning-label">Phase 2: Line Threshold</span>
-                                    <input type="number" id="input-track-p2-thresh" step="100" value="2800.0">
-                                </div>
-                            </div>
-                        </div>
-                        <div class="tuning-actions" style="margin-top: 20px;">
-                            <button id="btn-tune-track" class="btn primary btn-large">Send Track Config</button>
-                        </div>
-                    </div>
-                </div>
+
 
                 <div class="tuning-actions" style="margin-top: 30px;">
                     <button id="btn-tune-test" class="btn primary btn-large">Test Tune</button>
                     <button id="btn-tune-save" class="btn danger btn-large">Save to Flash</button>
+                </div>
+            </div>
+
+            <!-- Analysis Tab (Recorded Data) -->
+            <div id="tab-analysis" class="tab-content" style="overflow-y: auto; padding: 24px; background: var(--log-bg);">
+                <h2 style="color: var(--text-primary); margin-bottom: 20px;">Run Analysis</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 20px;">Charts will populate automatically after you click "Stop System".</p>
+                
+                <div>
+                    <div class="motor-card">
+                        <h3>Lateral Error (e2)</h3>
+                        <div class="chart-container" style="height: 60vh; min-height: 400px; margin-top: 15px; padding: 0;">
+                            <canvas id="e2-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 24px;">
+                    <div class="motor-card">
+                        <h3>RPM Analysis</h3>
+                        <div class="chart-container" style="height: 60vh; min-height: 400px; margin-top: 15px; padding: 0;">
+                            <canvas id="rpm-analysis-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 24px;">
+                    <div class="motor-card">
+                        <h3>Velocity Analysis (mm/s)</h3>
+                        <div class="chart-container" style="height: 60vh; min-height: 400px; margin-top: 15px; padding: 0;">
+                            <canvas id="velocity-chart"></canvas>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

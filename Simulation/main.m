@@ -2,7 +2,8 @@
 clc;
 clear all;
 close all;
-global ul ur R v_input w_input d;
+global ul ur R v_input w_input d b r vR Kp Ki Kd kp1 ki1 kd1 kp2 ki2 kd2;
+parameter;
 syms z;
 %% Map
 saban;
@@ -10,10 +11,6 @@ hold on
 xlim([-3100,100]);
 ylim([-200,1650]);
 grid on
-%% Mechanial parameters
-b = 209;                            % Axial distance between 2 driving wheels
-d = 111;                            % Distance from the center of the sensor array to the center of the drive shaft
-r = 65/2;                           % Radius of each drive wheel
 %% Initial setup
 xM(1) = 0;                          % Horizontal position of the center of the 2 driving wheels (Vehicle's center)
 yM(1) = 0;                          % Vertical position of the center of the 2 driving wheels (Vehicle's center)
