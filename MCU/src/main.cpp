@@ -69,6 +69,7 @@ SharedRobotState robot_state = {
     .actual_rpm_right = 0.0f,
     .manual_cmd_l = 0.0f,
     .manual_cmd_r = 0.0f,
+    .current_e2 = 0.0f,
     .loadcell_weight = 0.0f,
     .line_calib = {.x_max = {4095, 4095, 4095, 4095, 4095},
                    .x_min = {0, 0, 0, 0, 0},

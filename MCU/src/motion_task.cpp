@@ -58,8 +58,6 @@ void motion_task_routine(void *pvParameters) {
   motor_right.get_pulse_count(last_pulse_r);
 
   uint32_t loop_counter = 0;
-  float target_rpm_l = 0.0f;
-  float target_rpm_r = 0.0f;
 
   gpio_config_t io_conf = {};
   io_conf.pin_bit_mask = (1ULL << GPIO_NUM_0);
@@ -174,7 +172,6 @@ void motion_task_routine(void *pvParameters) {
         enc_offset_l = current_pulse_l;
         enc_offset_r = current_pulse_r;
         motion_controller.reset();
-        ESP_LOGI(TAG, "System Started: Encoders and Controller reset.");
       }
       prev_system_running = current_system_running;
 
