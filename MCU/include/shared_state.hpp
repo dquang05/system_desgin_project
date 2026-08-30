@@ -76,4 +76,9 @@ struct SharedRobotState {
     TrackStrategyConfig track_config;
     bool system_running;
     bool soft_stop_request;
+    
+    // Test mode variables (UDP test PID)
+    bool test_mode_active;
+    float test_target_rpm_l;
+    float test_target_rpm_r;
 };

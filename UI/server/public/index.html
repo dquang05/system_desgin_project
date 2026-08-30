@@ -34,6 +34,7 @@
             <button id="btn-disconnect" class="btn danger">Disconnect</button>
             <button id="btn-start" class="btn success" style="margin-left: 20px;">Start System</button>
             <button id="btn-stop" class="btn warning">Stop System</button>
+            <button id="btn-test-pid" class="btn primary" style="margin-left: 20px;">Test PID</button>
             <button id="btn-clear" class="btn secondary" style="margin-left: 20px;">Clear Log</button>
             
             <label class="toggle">
@@ -180,8 +181,8 @@
                 <!-- Manual Motor Control -->
                 <div class="motor-grid" style="margin-top: 24px;">
                     <div class="motor-card" style="width: 100%;">
-                        <h3>Manual Motor Control</h3>
-                        <p style="text-align: center; color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9em;">Directly control wheel RPMs</p>
+                        <h3>PID Target RPM <button id="btn-show-pid-chart" class="icon-btn" title="Show PID Step Response Chart">📊</button></h3>
+                        <p style="text-align: center; color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9em;">Set target RPM for step response test</p>
                         
                         <div style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;">
                             <div class="tuning-row" style="grid-template-columns: auto 1fr; align-items: center; width: 300px; margin-bottom: 0;">
@@ -194,10 +195,7 @@
                             </div>
                         </div>
                         
-                        <div style="display: flex; gap: 10px; margin-top: 20px; justify-content: center; max-width: 400px; margin-left: auto; margin-right: auto;">
-                            <button id="btn-manual-send" class="btn primary" style="flex: 1; padding: 10px;">Send</button>
-                            <button id="btn-manual-stop" class="btn danger" style="flex: 1; padding: 10px;">Stop</button>
-                        </div>
+
                     </div>
                 </div>
 
@@ -290,6 +288,31 @@
                             <canvas id="velocity-chart"></canvas>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- PID Test Chart Modal -->
+    <div id="pid-chart-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" id="close-pid-modal">&times;</span>
+            <h2 style="margin-top: 0; color: var(--text-primary);">PID Step Response</h2>
+            <div class="chart-container" style="height: 50vh; min-height: 400px; padding: 0;">
+                <canvas id="pid-test-chart"></canvas>
+            </div>
+            <div class="metrics-container" style="display: flex; gap: 20px; margin-top: 15px;">
+                <div class="motor-card" style="flex: 1; padding: 15px;">
+                    <h3 style="margin-top: 0; font-size: 16px; margin-bottom: 10px;">Left Motor Metrics</h3>
+                    <div class="motor-stat"><span class="stat-label">Overshoot</span> <span class="stat-value" id="metric-os-l">-</span></div>
+                    <div class="motor-stat"><span class="stat-label">Settling Time (5%)</span> <span class="stat-value" id="metric-ts-l">-</span></div>
+                    <div class="motor-stat"><span class="stat-label">Steady State Error</span> <span class="stat-value" id="metric-sse-l">-</span></div>
+                </div>
+                <div class="motor-card" style="flex: 1; padding: 15px;">
+                    <h3 style="margin-top: 0; font-size: 16px; margin-bottom: 10px;">Right Motor Metrics</h3>
+                    <div class="motor-stat"><span class="stat-label">Overshoot</span> <span class="stat-value" id="metric-os-r">-</span></div>
+                    <div class="motor-stat"><span class="stat-label">Settling Time (5%)</span> <span class="stat-value" id="metric-ts-r">-</span></div>
+                    <div class="motor-stat"><span class="stat-label">Steady State Error</span> <span class="stat-value" id="metric-sse-r">-</span></div>
                 </div>
             </div>
         </div>

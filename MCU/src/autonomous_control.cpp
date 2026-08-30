@@ -28,7 +28,20 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
 
   // 2. State Machine execution
   if (loop_counter % PID_EXEC_DECIMATION == 0) {
-    float e2 = _line_tracker.compute_e2(state.adc_raw, state.line_calib,
+    uint32_t masked_adc[ROBOT_NUM_SENSORS];
+    for (int i = 0; i < ROBOT_NUM_SENSORS; i++) {
+      masked_adc[i] = state.adc_raw[i];
+    }
+
+    if (_current_state == TrackState::DELIVERING_TYPE_1) {
+      masked_adc[3] = 0;
+      masked_adc[4] = 0;
+    } else if (_current_state == TrackState::DELIVERING_TYPE_2) {
+      masked_adc[0] = 0;
+      masked_adc[1] = 0;
+    }
+
+    float e2 = _line_tracker.compute_e2(masked_adc, state.line_calib,
                                         state.physical_config);
     _last_e2 = e2;
 
@@ -184,29 +197,35 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
     }
 
     case TrackState::DELIVERING_TYPE_1: {
-      // Type 1: Turn Left
-      _last_target_rpm_l = state.track_config.turn_phase1_inner_rpm;
-      _last_target_rpm_r = state.track_config.turn_phase1_outer_rpm;
+      // Type 1: Turn Left using Sensor Masking & PID
+      RobotPhysicalConfig dyn_config = state.physical_config;
+      dyn_config.v_ref = state.track_config.v_ref_turn; // Slower speed for turning
+
+      _line_tracker.compute_target_rpm(e2, PID_OUTER_DT_S, dyn_config,
+                                       _last_target_rpm_l, _last_target_rpm_r);
       _recovery_ticks++;
 
       if (_recovery_ticks >= state.track_config.turn_phase1_timeout_ticks) {
         _current_state = TrackState::MOVING_TO_PICKUP;
         _recovery_ticks = 0;
-        _line_tracker.reset();
+        // Do not reset line tracker here to allow smooth derivative transition
       }
       break;
     }
 
     case TrackState::DELIVERING_TYPE_2: {
-      // Type 2: Turn Right
-      _last_target_rpm_l = state.track_config.turn_phase1_outer_rpm;
-      _last_target_rpm_r = state.track_config.turn_phase1_inner_rpm;
+      // Type 2: Turn Right using Sensor Masking & PID
+      RobotPhysicalConfig dyn_config = state.physical_config;
+      dyn_config.v_ref = state.track_config.v_ref_turn; // Slower speed for turning
+
+      _line_tracker.compute_target_rpm(e2, PID_OUTER_DT_S, dyn_config,
+                                       _last_target_rpm_l, _last_target_rpm_r);
       _recovery_ticks++;
 
       if (_recovery_ticks >= state.track_config.turn_phase1_timeout_ticks) {
         _current_state = TrackState::MOVING_TO_PICKUP;
         _recovery_ticks = 0;
-        _line_tracker.reset();
+        // Do not reset line tracker here to allow smooth derivative transition
       }
       break;
     }

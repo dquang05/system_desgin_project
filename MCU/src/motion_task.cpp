@@ -112,6 +112,10 @@ void motion_task_routine(void *pvParameters) {
       float rpm_l = filtered_rpm_l;
       float rpm_r = filtered_rpm_r;
 
+      bool is_test_mode = false;
+      float test_target_rpm_l_val = 0.0f;
+      float test_target_rpm_r_val = 0.0f;
+      
       StateSnapshot snap;
       portENTER_CRITICAL(&state->spinlock);
       for (int i = 0; i < ROBOT_NUM_SENSORS; i++) {
@@ -123,6 +127,10 @@ void motion_task_routine(void *pvParameters) {
       snap.manual_cmd_r = state->manual_cmd_r;
       snap.loadcell_weight = state->loadcell_weight;
       snap.track_config = state->track_config;
+      
+      is_test_mode = state->test_mode_active;
+      test_target_rpm_l_val = state->test_target_rpm_l;
+      test_target_rpm_r_val = state->test_target_rpm_r;
       portEXIT_CRITICAL(&state->spinlock);
 
       // Pass the *raw* un-decimated pulses so we get accurate displacement
@@ -131,8 +139,15 @@ void motion_task_routine(void *pvParameters) {
       snap.encoder_l = relative_pulse_l;
       snap.encoder_r = relative_pulse_r;
 
-      // Compute strategy (Manual or Autonomous)
-      MotionOutput m_out = motion_controller.compute(snap, dt_s, loop_counter);
+      // Compute strategy (Manual or Autonomous) - ONLY ONCE
+      MotionOutput m_out;
+      if (is_test_mode) {
+        m_out.target_rpm_left = test_target_rpm_l_val;
+        m_out.target_rpm_right = test_target_rpm_r_val;
+        m_out.current_e2 = 0.0f;
+      } else {
+        m_out = motion_controller.compute(snap, dt_s, loop_counter);
+      }
       target_rpm_l = m_out.target_rpm_left;
       target_rpm_r = m_out.target_rpm_right;
       current_e2 = m_out.current_e2;
@@ -188,19 +203,25 @@ void motion_task_routine(void *pvParameters) {
         duty_r = 0.0f;
       } else {
         // RUNNING MODE
-        MotionOutput m_out;
+        MotionOutput m_out_running;
 
         if (current_soft_stop_req) {
           // Soft stop requested by UDP
-          m_out.target_rpm_left = 0.0f;
-          m_out.target_rpm_right = 0.0f;
+          m_out_running.target_rpm_left = 0.0f;
+          m_out_running.target_rpm_right = 0.0f;
+        } else if (is_test_mode) {
+          m_out_running.target_rpm_left = test_target_rpm_l_val;
+          m_out_running.target_rpm_right = test_target_rpm_r_val;
+          current_e2 = 0.0f;
         } else {
-          m_out = motion_controller.compute(snap, dt_s, loop_counter);
-          current_e2 = m_out.current_e2;
+          // We already computed m_out earlier in the loop. 
+          // However, to maintain the logic without calling compute twice:
+          m_out_running.target_rpm_left = target_rpm_l;
+          m_out_running.target_rpm_right = target_rpm_r;
         }
 
-        target_rpm_l = m_out.target_rpm_left;
-        target_rpm_r = m_out.target_rpm_right;
+        target_rpm_l = m_out_running.target_rpm_left;
+        target_rpm_r = m_out_running.target_rpm_right;
 
         // Check if we have successfully soft-stopped (ONLY if soft stop was
         // requested)

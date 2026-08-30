@@ -1,0 +1,12 @@
+=== BÁO CÁO MÔ PHỎNG MOTOR_RESPONSE.M ===
+Target Speed: 100.00
+
+--- Động cơ 1 (Bánh Trái) ---
+Hàm truyền: K1 = 12.0500, a1 = 10.6400
+PID       : Kp1 = 1.0673, Ki1 = 13.9480, Kd1 = 0.0000
+Đáp ứng   : Overshoot = 0.89 %, Settling Time = 0.2085 s, SSE = 0.0000
+
+--- Động cơ 2 (Bánh Phải) ---
+Hàm truyền: K2 = 9.8660, a2 = 8.9220
+PID       : Kp2 = 1.2452, Ki2 = 13.6563, Kd2 = 0.0000
+Đáp ứng   : Overshoot = 1.07 %, Settling Time = 0.2192 s, SSE = 0.0000

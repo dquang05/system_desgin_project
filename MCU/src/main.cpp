@@ -97,7 +97,7 @@ SharedRobotState robot_state = {
                      .slow_zone_end_mm = 2250.0f,
                      .turn_phase1_outer_rpm = 50.0f,
                      .turn_phase1_inner_rpm = 0.0f,
-                     .turn_phase1_timeout_ticks = 20, // 20 ticks * 50ms = 1000ms
+                     .turn_phase1_timeout_ticks = 4, // 4 ticks * 50ms = 200ms
                      .turn_phase2_outer_rpm = 30.0f,
                      .turn_phase2_inner_rpm = 0.0f,
                      .turn_phase2_center_threshold = 2800.0f,
@@ -106,7 +106,10 @@ SharedRobotState robot_state = {
                      .loadcell_type2_min = 1800.0f,
                      .loadcell_type2_max = 2200.0f},
     .system_running = false,
-    .soft_stop_request = false};
+    .soft_stop_request = false,
+    .test_mode_active = false,
+    .test_target_rpm_l = 0.0f,
+    .test_target_rpm_r = 0.0f};
 
 // Global Drivers (Workers)
 wifi_manager::WifiManager wifi;
@@ -356,6 +359,7 @@ void udp_receiver_task(void *pvParameters) {
       } else if (strcmp(cmd->valuestring, "stop") == 0) {
         portENTER_CRITICAL(&state->spinlock);
         state->soft_stop_request = true;
+        state->test_mode_active = false;
         portEXIT_CRITICAL(&state->spinlock);
         ESP_LOGI(TAG, "UDP Command: STOP (Soft brake requested)");
       } else if (strcmp(cmd->valuestring, "tune") == 0) {
@@ -450,6 +454,23 @@ void udp_receiver_task(void *pvParameters) {
           }
           portEXIT_CRITICAL(&state->spinlock);
         }
+      } else if (strcmp(cmd->valuestring, "test_pid") == 0) {
+        cJSON *rpm_l = cJSON_GetObjectItemCaseSensitive(json, "rpm_l");
+        cJSON *rpm_r = cJSON_GetObjectItemCaseSensitive(json, "rpm_r");
+
+        portENTER_CRITICAL(&state->spinlock);
+        if (cJSON_IsNumber(rpm_l)) {
+          state->test_target_rpm_l = rpm_l->valuedouble;
+        }
+        if (cJSON_IsNumber(rpm_r)) {
+          state->test_target_rpm_r = rpm_r->valuedouble;
+        }
+        state->test_mode_active = true;
+        state->system_running = true;
+        state->soft_stop_request = false;
+        portEXIT_CRITICAL(&state->spinlock);
+        
+        ESP_LOGI(TAG, "UDP Command: TEST_PID");
       }
     }
     cJSON_Delete(json);

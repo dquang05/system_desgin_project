@@ -8,7 +8,7 @@ import { LogViewer } from './logViewer.js';
 import { ChartManager } from './chartManager.js';
 import { MotorManager } from './motorManager.js';
 import { TuningManager } from './tuningManager.js';
-import { ManualDriveManager } from './manualDriveManager.js';
+import { PidTestManager } from './pidTestManager.js';
 import { DataRecordingManager } from './dataRecordingManager.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -28,7 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const chartMgr = new ChartManager();
     const motorMgr = new MotorManager();
     const tuningMgr = new TuningManager(socketMgr);
-    const manualDriveMgr = new ManualDriveManager(socketMgr);
+    const pidTestMgr = new PidTestManager(socketMgr);
     const dataRecMgr = new DataRecordingManager(socketMgr);
     
     // Setup Socket Listeners
@@ -52,6 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
         motorMgr.processLog(logEntry);
         tuningMgr.processLog(logEntry);
         dataRecMgr.processLog(logEntry);
+        pidTestMgr.processLog(logEntry);
     });
 
     socketMgr.onErrorMsg((msg) => {

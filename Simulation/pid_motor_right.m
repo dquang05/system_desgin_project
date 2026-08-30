@@ -1,6 +1,11 @@
 % PID right motor controller
 function [int_er, vr, pre_nr] = pid_motor_right(er1r, wr, pre_nr, int_er)
-    global ur kp2 ki2 kd2 r;
+    global ur;
+kp2 = 1.2452;     % Số mới đã tune theo K,a mới
+ki2 = 13.6563;
+kd2 = 0.0;
+
+    r = 40;
     tsamppid = 0.03;
 
     er2r = er1r;
@@ -16,6 +21,5 @@ function [int_er, vr, pre_nr] = pid_motor_right(er1r, wr, pre_nr, int_er)
     end
     [tt,y] = ode45(@motor2_tf,[0 tsamppid],pre_nr);
     pre_nr = y(length(y),1);
-    pre_nr = pre_nr*4/3;
     vr = pre_nr*pi/30*r;
 end

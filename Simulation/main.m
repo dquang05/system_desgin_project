@@ -2,15 +2,17 @@
 clc;
 clear all;
 close all;
-global ul ur R v_input w_input d b r vR Kp Ki Kd kp1 ki1 kd1 kp2 ki2 kd2;
-parameter;
-syms z;
+global ul ur R v_input w_input d;
 %% Map
 saban;
 hold on
 xlim([-3100,100]);
 ylim([-200,1650]);
 grid on
+%% Mechanial parameters
+b = 246;                            % Axial distance between 2 driving wheels
+d = 176;                            % Distance from the center of the sensor array to the center of the drive shaft
+r = 40;                           % Radius of each drive wheel
 %% Initial setup
 xM(1) = 0;                          % Horizontal position of the center of the 2 driving wheels (Vehicle's center)
 yM(1) = 0;                          % Vertical position of the center of the 2 driving wheels (Vehicle's center)
@@ -20,7 +22,7 @@ xC(1)=xM(1) + d*cos(phi(1));        % Horizontal coordinates of the center of th
 yC(1)=yM(1) + d*sin(phi(1));        % Vertical coordinates of the center of the sensor array (Tracking point)
 %% Modeling
 h1 = plot(1,1, 'black');
-h2 = plot(1,1, 'black');
+h2 = plot(1,1, 'black');    
 h3 = plot(1,1, 'black');
 h4 = plot(1,1, 'black');
 obit = animatedline('color',[0.4660 0.6740 0.1880],'LineWidth',2);
@@ -94,7 +96,7 @@ for i =1:200
         ya = linspace(yC(i) + 80*cos(phi(i)), yC(i) - 80*cos(phi(i)),2);
 
         h1=plot(xs, ys, 'red','LineWidth',2);
-        h2 = viscircles([xM(i),yM(i)],110,'Color','black','LineWidth',1);
+        h2 = rectangle('Position',[xM(i)-110, yM(i)-110, 220, 220], 'Curvature',[1,1], 'EdgeColor','black','LineWidth',1);
         h3=plot(xa, ya, 'blue','Linewidth',2);
         addpoints(obit,xC(i), yC(i));
         drawnow;
@@ -112,7 +114,7 @@ wl = wl*10; wr = wr*10;
 xlabel('mm');
 xlim([-3100,100]);
 ylim([-200,1650]);
-title('Kinematic Model');
+title('Quỹ đạo di chuyển của robot trên sa bàn');
 figure();
 plot(t,e);
 hold on;
@@ -120,24 +122,51 @@ y=zeros(1,length(t));
 plot(t,y,'r');
 grid on;
 xlabel('Time(s)');
-ylabel('Error e_2 (mm)');
-title('Tracking error e_2 ');
+ylabel('Độ lệch tâm dò line so với line (mm)');
+title('Sai số bám line theo thời gian');
 figure();
 plot(t,wl);
 hold on;
 plot(t,wr);
 grid on;
-legend('\omega_l', '\omega_r ');
-xlabel('Time(s)');
-ylabel('Omega (RPM)');
-title('Angular velocity of robot');
+legend('Bánh trái', 'Bánh phải');
+xlabel('Thời gian (s)');
+ylabel('Tốc độ góc (RPM)');
+title('Tốc độ góc 2 bánh xe');
 figure();
 plot(t,vl);
 hold on;
 plot(t,vr);
 grid on;
-legend('v_l', 'v_r ');
-xlabel('Time(s)');
-ylabel('Speed (mm/s)');
-title('Speed of robot ');
+legend('Bánh trái', 'Bánh phải');
+xlabel('Thời gian (s)');
+ylabel('Tốc độ dài (mm/s)');
+title('Tốc độ dài 2 bánh xe');
 ylim([0 900]);
+
+%% Export results for AI Agent
+fileID = fopen('main_simulation_results.txt', 'w');
+rms_error = rms(e);
+[max_error, max_idx] = max(abs(e));
+time_max_error = t(max_idx);
+zero_crossings = sum(e(1:end-1) .* e(2:end) < 0);
+IAE = sum(abs(e)) * tsampsys; % Tích phân sai số tuyệt đối
+
+fprintf(fileID, '=== BÁO CÁO MÔ PHỎNG MAIN.M ===\n');
+fprintf(fileID, '1. Đánh giá tổng quan (Độ bám):\n');
+fprintf(fileID, '- Thời gian mô phỏng: %.2f s\n', t(end));
+fprintf(fileID, '- RMS Error (Sai số hiệu dụng): %.4f mm\n', rms_error);
+fprintf(fileID, '- IAE (Tổng sai số cộng dồn): %.4f\n\n', IAE);
+
+fprintf(fileID, '2. Đánh giá Dao động (Lắc đuôi):\n');
+fprintf(fileID, '- Số lần quét qua tâm vạch (Zero-crossings): %d lần\n', zero_crossings);
+if zero_crossings > 10
+    fprintf(fileID, '  -> [CẢNH BÁO]: Xe bị dao động zigzag. AI Agent nên gợi ý giảm Kp hoặc tăng Kd ở hàm tracking_line!\n\n');
+else
+    fprintf(fileID, '  -> [OK]: Xe chạy tương đối ổn định.\n\n');
+end
+
+fprintf(fileID, '3. Đánh giá Văng cua (Overshoot):\n');
+fprintf(fileID, '- Lỗi văng xa nhất: %.4f mm\n', max_error);
+fprintf(fileID, '- Thời điểm xảy ra lỗi lớn nhất: t = %.2f s\n', time_max_error);
+fclose(fileID);

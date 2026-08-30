@@ -1,6 +1,11 @@
 % PID left motor controller
 function [int_el, vl, pre_nl] = pid_motor_left(er1l, wl, pre_nl, int_el)
-    global ul kp1 ki1 kd1 r;
+    global ul;
+kp1 = 1.0673;     % Số mới đã tune theo K,a mới
+ki1 = 13.948;
+kd1 = 0;
+
+    r = 40;
     tsamppid = 0.03;
     
     er2l = er1l;
@@ -16,6 +21,5 @@ function [int_el, vl, pre_nl] = pid_motor_left(er1l, wl, pre_nl, int_el)
     end
     [tt,y] = ode45(@motor1_tf,[0 tsamppid],pre_nl);
     pre_nl = y(length(y),1);
-    pre_nl=pre_nl*4/3;
     vl = pre_nl*pi/30*r;
 end

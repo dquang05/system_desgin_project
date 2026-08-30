@@ -42,6 +42,15 @@ export class DataRecordingManager {
             // Stop recording: render charts
             if (this.isRecording) {
                 this.isRecording = false;
+                
+                // Normalize timestamps to start at 0s and convert to seconds
+                if (this.timestamps.length > 0) {
+                    const t0 = this.timestamps[0];
+                    for (let i = 0; i < this.timestamps.length; i++) {
+                        this.timestamps[i] = ((this.timestamps[i] - t0) / 1000).toFixed(1);
+                    }
+                }
+                
                 console.log(`DataRecordingManager: Stopped recording. Captured ${this.timestamps.length} data points.`);
                 this.renderCharts();
             }
@@ -56,8 +65,8 @@ export class DataRecordingManager {
             
             // Check if required fields exist
             if (obj.e2 !== undefined && obj.rpm_act !== undefined) {
-                // Record timestamp (convert from us to ms for better readability, or just use as is)
-                this.timestamps.push(obj.ts / 1000); 
+                // Record timestamp
+                this.timestamps.push(obj.ts); // ESP32 sends millis()
                 
                 // Record e2
                 this.e2.push(obj.e2);
@@ -104,7 +113,7 @@ export class DataRecordingManager {
             scales: {
                 x: {
                     display: true,
-                    title: { display: true, text: 'Time (ms)', color: '#8b949e' },
+                    title: { display: true, text: 'Time (s)', color: '#8b949e' },
                     ticks: { color: '#8b949e', maxTicksLimit: 20 },
                     grid: { color: '#30363d' }
                 },

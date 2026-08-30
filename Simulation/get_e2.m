@@ -8,10 +8,10 @@ function [line, i, j, e, stop, color] = get_e2(line, xC, yC, phi, i, j, color)
                 line=2;
             end
             if (xC<-2000 && color == 0)
-                answer = questdlg('What weight of package?', ...
-	                              'Choose Weight', ...
-	                              '1kg', '2kg', '1kg');
-                if answer == "1kg"
+                answer = questdlg('What color of package?', ...
+	                              'Choose Color', ...
+	                              'Red', 'Blue', 'Red');
+                if answer == "Red"
                     color = 1;
                 else
                     color = 2;
