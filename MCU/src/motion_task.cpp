@@ -145,6 +145,7 @@ void motion_task_routine(void *pvParameters) {
         m_out.target_rpm_left = test_target_rpm_l_val;
         m_out.target_rpm_right = test_target_rpm_r_val;
         m_out.current_e2 = 0.0f;
+        m_out.is_finished = false;
       } else {
         m_out = motion_controller.compute(snap, dt_s, loop_counter);
       }
@@ -164,6 +165,14 @@ void motion_task_routine(void *pvParameters) {
       current_system_running = state->system_running;
       current_soft_stop_req = state->soft_stop_request;
       portEXIT_CRITICAL(&state->spinlock);
+
+      // Auto-stop logic when reaching the end of the track
+      if (m_out.is_finished && current_system_running && !current_soft_stop_req) {
+        portENTER_CRITICAL(&state->spinlock);
+        state->soft_stop_request = true;
+        current_soft_stop_req = true;
+        portEXIT_CRITICAL(&state->spinlock);
+      }
 
       // 1. BOOT Button Polling
       static uint32_t btn_press_ticks = 0;

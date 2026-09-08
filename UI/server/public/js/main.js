@@ -64,7 +64,10 @@ document.addEventListener('DOMContentLoaded', () => {
     btnDisconnect.addEventListener('click', () => socketMgr.disconnect());
     document.getElementById('btn-start').addEventListener('click', () => socketMgr.startSystem());
     document.getElementById('btn-stop').addEventListener('click', () => socketMgr.stopSystem());
-    document.getElementById('btn-clear').addEventListener('click', () => logViewer.clear());
+    document.getElementById('btn-clear').addEventListener('click', () => {
+        logViewer.clear();
+        chartMgr.clearMinHistory();
+    });
 
     // Setup Tabs
     tabBtns.forEach(btn => {

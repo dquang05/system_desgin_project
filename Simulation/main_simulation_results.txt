@@ -1,11 +1,11 @@
 === BÁO CÁO MÔ PHỎNG MAIN.M ===
 1. Đánh giá tổng quan (Độ bám):
 - Thời gian mô phỏng: 12.80 s
-- RMS Error (Sai số hiệu dụng): 12.0563 mm
-- IAE (Tổng sai số cộng dồn): 100.1769
+- RMS Error (Sai số hiệu dụng): 11.9327 mm
+- IAE (Tổng sai số cộng dồn): 98.7142
 
 2. Đánh giá Dao động (Lắc đuôi):
-- Số lần quét qua tâm vạch (Zero-crossings): 19 lần
+- Số lần quét qua tâm vạch (Zero-crossings): 20 lần
   -> [CẢNH BÁO]: Xe bị dao động zigzag. AI Agent nên gợi ý giảm Kp hoặc tăng Kd ở hàm tracking_line!
 
 3. Đánh giá Văng cua (Overshoot):

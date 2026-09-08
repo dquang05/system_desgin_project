@@ -24,7 +24,8 @@ export class TuningManager {
             kpT: document.getElementById('active-kp-t'),
             kiT: document.getElementById('active-ki-t'),
             kdT: document.getElementById('active-kd-t'),
-            vRef: document.getElementById('active-v-ref')
+            vRef: document.getElementById('active-v-ref'),
+            vRefTurn: document.getElementById('active-v-ref-turn')
         };
         
         // Input elements
@@ -40,7 +41,8 @@ export class TuningManager {
             kpT: document.getElementById('input-kp-t'),
             kiT: document.getElementById('input-ki-t'),
             kdT: document.getElementById('input-kd-t'),
-            vRef: document.getElementById('input-v-ref')
+            vRef: document.getElementById('input-v-ref'),
+            vRefTurn: document.getElementById('input-v-ref-turn')
         };
         
         // Buttons
@@ -57,7 +59,8 @@ export class TuningManager {
             L: [0, 0, 0],
             R: [0, 0, 0],
             T: [0, 0, 0],
-            vRef: 0
+            vRef: 0,
+            vRefTurn: 0
         };
         
         // Bind methods
@@ -101,6 +104,9 @@ export class TuningManager {
                 if (obj.v_ref !== undefined) {
                     this.currentPid.vRef = obj.v_ref;
                 }
+                if (obj.v_ref_turn !== undefined) {
+                    this.currentPid.vRefTurn = obj.v_ref_turn;
+                }
                 
                 if (!this.initializedInputs) {
                     this.initializedInputs = true;
@@ -118,6 +124,7 @@ export class TuningManager {
                     if (this.inputEls.kdT) this.inputEls.kdT.value = this.currentPid.T[2].toFixed(3);
 
                     if (this.inputEls.vRef) this.inputEls.vRef.value = this.currentPid.vRef.toFixed(1);
+                    if (this.inputEls.vRefTurn) this.inputEls.vRefTurn.value = this.currentPid.vRefTurn.toFixed(1);
                 }
                 
                 this.needsUpdate = true;
@@ -154,6 +161,9 @@ export class TuningManager {
         if (this.activeEls.vRef) {
             this.activeEls.vRef.textContent = this.currentPid.vRef.toFixed(1);
         }
+        if (this.activeEls.vRefTurn) {
+            this.activeEls.vRefTurn.textContent = this.currentPid.vRefTurn.toFixed(1);
+        }
         
         this.needsUpdate = false;
     }
@@ -179,7 +189,8 @@ export class TuningManager {
                 parseFloat(this.inputEls.kiT.value) || 0,
                 parseFloat(this.inputEls.kdT.value) || 0
             ],
-            v_ref: parseFloat(this.inputEls.vRef.value) || 0
+            v_ref: parseFloat(this.inputEls.vRef.value) || 0,
+            v_ref_turn: parseFloat(this.inputEls.vRefTurn.value) || 0
         };
         
         if (this.socketMgr && this.socketMgr.socket) {

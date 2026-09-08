@@ -41,7 +41,7 @@ void telemetry_task_routine(void *pvParameters) {
         json_buf, sizeof(json_buf),
         "{\"ts\":%lu,\"enc\":[%lld,%lld],\"pwm\":[%.2f,%.2f],\"adc\":[%lu,%lu,%"
         "lu,%lu,%lu],\"rpm_tgt\":[%.2f,%.2f],\"rpm_act\":[%.2f,%.2f],\"e2\":%."
-        "2f,\"weight\":%.2f,\"v_ref\":%.2f,\"pid\":{\"L\":[%.3f,%.3f,%.3f],"
+        "2f,\"weight\":%.2f,\"v_ref\":%.2f,\"v_ref_turn\":%.2f,\"pid\":{\"L\":[%.3f,%.3f,%.3f],"
         "\"R\":[%.3f,%.3f,%.3f],\"T\":[%.3f,%.3f,%.3f]}}",
         (uint32_t)(esp_timer_get_time() / 1000), local_state.encoder_left,
         local_state.encoder_right, local_state.pwm_left, local_state.pwm_right,
@@ -50,7 +50,8 @@ void telemetry_task_routine(void *pvParameters) {
         local_state.target_rpm_left, local_state.target_rpm_right,
         local_state.actual_rpm_left, local_state.actual_rpm_right,
         local_state.current_e2, local_state.loadcell_weight,
-        local_state.physical_config.v_ref, local_state.physical_config.kp_l,
+        local_state.physical_config.v_ref, local_state.physical_config.v_ref_turn,
+        local_state.physical_config.kp_l,
         local_state.physical_config.ki_l, local_state.physical_config.kd_l,
         local_state.physical_config.kp_r, local_state.physical_config.ki_r,
         local_state.physical_config.kd_r, local_state.physical_config.kp,

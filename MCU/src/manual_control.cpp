@@ -7,6 +7,8 @@ MotionOutput ManualControl::compute(const StateSnapshot& state, float dt_s, uint
     MotionOutput out;
     out.target_rpm_left = state.manual_cmd_l;
     out.target_rpm_right = state.manual_cmd_r;
+    out.current_e2 = 0.0f;
+    out.is_finished = false;
     
     return out;
 }

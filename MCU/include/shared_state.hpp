@@ -18,6 +18,7 @@ struct RobotPhysicalConfig {
     float wheel_radius_mm;
     float sensor_distance_mm;
     float v_ref;
+    float v_ref_turn;
     float kp;      // Line tracker kp
     float kd;      // Line tracker kd
     float pid_tau; // Line tracker tau
@@ -34,21 +35,12 @@ struct TrackStrategyConfig {
     float encoder_ppr;           // Pulses per revolution
 
     // Straight line and corner speeds
-    float v_ref_normal;          // Target speed normally
-    float v_ref_turn;            // Target speed in slow zone
-    float slow_zone_start_mm;    // Start of slow zone
-    float slow_zone_end_mm;      // End of slow zone
-
+    
     // Steering Phase 1 (Hard Turn)
     float turn_phase1_outer_rpm; // RPM for the outer wheel
     float turn_phase1_inner_rpm; // RPM for the inner wheel
     uint32_t turn_phase1_timeout_ticks; // Max ticks (e.g. at 50ms per tick)
     
-    // Steering Phase 2 (Pivot/Align)
-    float turn_phase2_outer_rpm; // RPM for the outer wheel
-    float turn_phase2_inner_rpm; // RPM for the inner wheel
-    float turn_phase2_center_threshold; // ADC threshold for center sensor to consider aligned
-
     // Loadcell thresholds
     float loadcell_type1_min;
     float loadcell_type1_max;

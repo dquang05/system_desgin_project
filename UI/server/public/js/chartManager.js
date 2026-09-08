@@ -58,6 +58,9 @@ export class ChartManager {
         this.needsUpdate = false;
         this.renderPending = false;
         
+        // Track the minimum value of each ADC channel
+        this.minValues = [Infinity, Infinity, Infinity, Infinity, Infinity];
+        
         // Bind the render loop to this instance
         this.renderLoop = this.renderLoop.bind(this);
     }
@@ -97,9 +100,22 @@ export class ChartManager {
                 const timeStr = logEntry.timestamp;
                 this.chart.data.labels.push(timeStr);
                 
-                // Add data to datasets
+                // Add data to datasets and update min values
+                let hasNewMin = false;
                 for (let i = 0; i < 5; i++) {
-                    this.chart.data.datasets[i].data.push(obj.adc[i]);
+                    const val = obj.adc[i];
+                    this.chart.data.datasets[i].data.push(val);
+                    if (val < this.minValues[i]) {
+                        this.minValues[i] = val;
+                        hasNewMin = true;
+                    }
+                }
+                
+                if (hasNewMin) {
+                    for (let i = 0; i < 5; i++) {
+                        const minVal = this.minValues[i] === Infinity ? '-' : this.minValues[i];
+                        this.chart.data.datasets[i].label = `ADC ${i + 1} (Min: ${minVal})`;
+                    }
                 }
                 
                 // Keep moving window
@@ -120,6 +136,21 @@ export class ChartManager {
             }
         } catch (e) {
             // Ignore non-JSON or improperly formatted logs
+        }
+    }
+
+    /**
+     * Resets the minimum values history and updates the chart legends.
+     */
+    clearMinHistory() {
+        this.minValues = [Infinity, Infinity, Infinity, Infinity, Infinity];
+        for (let i = 0; i < 5; i++) {
+            this.chart.data.datasets[i].label = `ADC ${i + 1}`;
+        }
+        this.needsUpdate = true;
+        if (this.isActive && !this.renderPending) {
+            this.renderPending = true;
+            requestAnimationFrame(this.renderLoop);
         }
     }
 }

@@ -5,6 +5,7 @@ struct MotionOutput {
     float target_rpm_left;
     float target_rpm_right;
     float current_e2;
+    bool is_finished;
 };
 
 struct StateSnapshot {

@@ -30,28 +30,23 @@ static const char *TAG = "ORCHESTRATOR";
 
 /**
  * ============================================================================
- * \todo Architecture: IMPROVE Y-JUNCTION TURNING LOGIC USING "SENSOR MASKING"
+ * \todo Calibration: SENSOR THRESHOLDS AND LINE COEFFICIENTS
  * ============================================================================
- * \par Current Implementation:
- * Turning at the Y-junction currently uses a "Hard Turn" (forcing RPM for a
- * fixed duration). This is an open-loop approach and is prone to errors due to
- * wheel slip or low battery.
+ * \par x_max and x_min:
+ * These represent the maximum and minimum thresholds for the 5 sensor eyes.
+ * Instead of hardcoding {4095} and {0}, actual parameters measured from each
+ * eye (e.g., 14, 12, 17, 11, 19... for the white region x_min) should be filled
+ * in.
  *
- * \par Proposed Improvement (Sensor Masking / Centroid Shifting):
- * 1. Update the `LineTracker::compute_e2()` function to accept an additional
- * `TurnDirection` parameter.
- * 2. For LEFT turn (1kg payload):
- *    - Force the 2 right sensors to 0 (white): `adc_raw[3] = 0; adc_raw[4] = 0;`
- * 3. For RIGHT turn (2kg payload):
- *    - Force the 2 left sensors to 0 (white): `adc_raw[0] = 0; adc_raw[1] = 0;`
+ * \par y_max and y_min:
+ * Keep as (1000 and 0) according to scale mapping theory.
  *
- * \par Expected Result:
- * The centroid calculation `x_centroid` in the PID will automatically shift
- * towards the desired branch. The vehicle will smoothly track the line through
- * the junction using PID (closed-loop) instead of moving blindly.
- *
- * \note The masking state needs to be maintained for a short time/distance
- * (e.g., 50 ticks) until the vehicle has fully entered the branch, before unmasking.
+ * \par line_coe_1 and line_coe_2:
+ * These are the linear approximation coefficients of the weighted average
+ * algorithm (final calibration formula to get actual distance in mm).
+ * As calculated in previous steps, they should be updated to:
+ * .line_coe_1 = 1.229f
+ * .line_coe_2 = 1.272f
  * ============================================================================
  */
 
@@ -72,15 +67,16 @@ SharedRobotState robot_state = {
     .current_e2 = 0.0f,
     .loadcell_weight = 0.0f,
     .line_calib = {.x_max = {4095, 4095, 4095, 4095, 4095},
-                   .x_min = {0, 0, 0, 0, 0},
+                   .x_min = {5, 0, 0, 23, 21},
                    .y_max = 1000,
                    .y_min = 0,
-                   .line_coe_1 = 1.0f,
-                   .line_coe_2 = 0.0f},
+                   .line_coe_1 = 1.229f,  // 1.0
+                   .line_coe_2 = 1.272f}, // 0/0
     .physical_config = {.wheel_base_mm = DEFAULT_PHYS_WHEEL_BASE_MM,
                         .wheel_radius_mm = DEFAULT_PHYS_WHEEL_RADIUS_MM,
                         .sensor_distance_mm = DEFAULT_PHYS_SENSOR_DISTANCE_MM,
                         .v_ref = 200.0f, // 200 mm/s base forward velocity
+                        .v_ref_turn = 500.0f,
                         .kp = DEFAULT_KP,
                         .kd = DEFAULT_KD,
                         .pid_tau = DEFAULT_PID_TAU,
@@ -91,16 +87,9 @@ SharedRobotState robot_state = {
                         .ki_r = DEFAULT_KI_R,
                         .kd_r = DEFAULT_KD_R},
     .track_config = {.encoder_ppr = 341.2f,
-                     .v_ref_normal = 200.0f,
-                     .v_ref_turn = 100.0f,
-                     .slow_zone_start_mm = 250.0f,
-                     .slow_zone_end_mm = 2250.0f,
                      .turn_phase1_outer_rpm = 50.0f,
                      .turn_phase1_inner_rpm = 0.0f,
                      .turn_phase1_timeout_ticks = 4, // 4 ticks * 50ms = 200ms
-                     .turn_phase2_outer_rpm = 30.0f,
-                     .turn_phase2_inner_rpm = 0.0f,
-                     .turn_phase2_center_threshold = 2800.0f,
                      .loadcell_type1_min = 800.0f,
                      .loadcell_type1_max = 1200.0f,
                      .loadcell_type2_min = 1800.0f,
@@ -214,6 +203,7 @@ struct NvsPidData {
   float kp_l, ki_l, kd_l;
   float kp_r, ki_r, kd_r;
   float v_ref;
+  float v_ref_turn;
 };
 
 /**
@@ -245,6 +235,7 @@ void load_nvs_params(SharedRobotState &state) {
     state.physical_config.ki_r = pid_data.ki_r;
     state.physical_config.kd_r = pid_data.kd_r;
     state.physical_config.v_ref = pid_data.v_ref;
+    state.physical_config.v_ref_turn = pid_data.v_ref_turn;
     ESP_LOGI(TAG, "Loaded PID params from NVS successfully.");
   } else {
     ESP_LOGW(TAG, "Failed to load PID params from NVS (using defaults).");
@@ -275,7 +266,8 @@ void save_nvs_params(const SharedRobotState &state) {
                          .kp_r = state.physical_config.kp_r,
                          .ki_r = state.physical_config.ki_r,
                          .kd_r = state.physical_config.kd_r,
-                         .v_ref = state.physical_config.v_ref};
+                         .v_ref = state.physical_config.v_ref,
+                         .v_ref_turn = state.physical_config.v_ref_turn};
 
   err = nvs_set_blob(my_handle, "pid_cfg", &pid_data, sizeof(NvsPidData));
   if (err == ESP_OK) {
@@ -370,13 +362,14 @@ void udp_receiver_task(void *pvParameters) {
           cJSON *pid_r = cJSON_GetObjectItemCaseSensitive(json, "pid_R");
           cJSON *pid_t = cJSON_GetObjectItemCaseSensitive(json, "pid_T");
           cJSON *v_ref_json = cJSON_GetObjectItemCaseSensitive(json, "v_ref");
+          cJSON *v_ref_turn_json = cJSON_GetObjectItemCaseSensitive(json, "v_ref_turn");
 
           bool update_l = false, update_r = false, update_t = false,
-               update_v = false;
+               update_v = false, update_v_turn = false;
           float l_p, l_i, l_d;
           float r_p, r_i, r_d;
           float t_p, t_d, t_tau;
-          float v_ref;
+          float v_ref, v_ref_turn;
 
           if (cJSON_IsArray(pid_l) && cJSON_GetArraySize(pid_l) == 3) {
             l_p = cJSON_GetArrayItem(pid_l, 0)->valuedouble;
@@ -400,6 +393,10 @@ void udp_receiver_task(void *pvParameters) {
             v_ref = v_ref_json->valuedouble;
             update_v = true;
           }
+          if (cJSON_IsNumber(v_ref_turn_json)) {
+            v_ref_turn = v_ref_turn_json->valuedouble;
+            update_v_turn = true;
+          }
 
           portENTER_CRITICAL(&state->spinlock);
           if (update_l) {
@@ -419,6 +416,9 @@ void udp_receiver_task(void *pvParameters) {
           }
           if (update_v) {
             state->physical_config.v_ref = v_ref;
+          }
+          if (update_v_turn) {
+            state->physical_config.v_ref_turn = v_ref_turn;
           }
           portEXIT_CRITICAL(&state->spinlock);
 
@@ -469,7 +469,7 @@ void udp_receiver_task(void *pvParameters) {
         state->system_running = true;
         state->soft_stop_request = false;
         portEXIT_CRITICAL(&state->spinlock);
-        
+
         ESP_LOGI(TAG, "UDP Command: TEST_PID");
       }
     }

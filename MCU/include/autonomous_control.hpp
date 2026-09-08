@@ -45,6 +45,11 @@ private:
     bool _is_carrying_package{false};
     uint8_t _cargo_type{0}; // 1 = Type 1 (Left), 2 = Type 2 (Right)
     
+    // Delivery tracking
+    bool _has_turned{false};
+    int64_t _post_turn_encoder_l{0};
+    int64_t _post_turn_encoder_r{0};
+    
     // Odometry
     int64_t _prev_encoder_l{0};
     int64_t _prev_encoder_r{0};

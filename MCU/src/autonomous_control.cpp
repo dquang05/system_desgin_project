@@ -52,7 +52,8 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
           state.adc_raw[2] < 500 && state.adc_raw[3] < 500 &&
           state.adc_raw[4] < 500) {
         
-        if (state.encoder_l >= 33000 && state.encoder_r >= 33000) {
+        if (_has_turned && (state.encoder_l - _post_turn_encoder_l) >= 12000 && 
+            (state.encoder_r - _post_turn_encoder_r) >= 12000) {
           // Reached the end of the track
           _current_state = TrackState::FINISHED;
         } else {
@@ -199,7 +200,7 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
     case TrackState::DELIVERING_TYPE_1: {
       // Type 1: Turn Left using Sensor Masking & PID
       RobotPhysicalConfig dyn_config = state.physical_config;
-      dyn_config.v_ref = state.track_config.v_ref_turn; // Slower speed for turning
+      dyn_config.v_ref = state.physical_config.v_ref_turn; // Slower speed for turning
 
       _line_tracker.compute_target_rpm(e2, PID_OUTER_DT_S, dyn_config,
                                        _last_target_rpm_l, _last_target_rpm_r);
@@ -208,6 +209,9 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
       if (_recovery_ticks >= state.track_config.turn_phase1_timeout_ticks) {
         _current_state = TrackState::MOVING_TO_PICKUP;
         _recovery_ticks = 0;
+        _has_turned = true;
+        _post_turn_encoder_l = state.encoder_l;
+        _post_turn_encoder_r = state.encoder_r;
         // Do not reset line tracker here to allow smooth derivative transition
       }
       break;
@@ -216,7 +220,7 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
     case TrackState::DELIVERING_TYPE_2: {
       // Type 2: Turn Right using Sensor Masking & PID
       RobotPhysicalConfig dyn_config = state.physical_config;
-      dyn_config.v_ref = state.track_config.v_ref_turn; // Slower speed for turning
+      dyn_config.v_ref = state.physical_config.v_ref_turn; // Slower speed for turning
 
       _line_tracker.compute_target_rpm(e2, PID_OUTER_DT_S, dyn_config,
                                        _last_target_rpm_l, _last_target_rpm_r);
@@ -225,6 +229,9 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
       if (_recovery_ticks >= state.track_config.turn_phase1_timeout_ticks) {
         _current_state = TrackState::MOVING_TO_PICKUP;
         _recovery_ticks = 0;
+        _has_turned = true;
+        _post_turn_encoder_l = state.encoder_l;
+        _post_turn_encoder_r = state.encoder_r;
         // Do not reset line tracker here to allow smooth derivative transition
       }
       break;
@@ -241,6 +248,7 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
   out.target_rpm_left = _last_target_rpm_l;
   out.target_rpm_right = _last_target_rpm_r;
   out.current_e2 = _last_e2;
+  out.is_finished = (_current_state == TrackState::FINISHED);
   return out;
 }
 
@@ -253,6 +261,9 @@ void AutonomousControl::reset() {
   _last_target_rpm_r = 0.0f;
   _is_carrying_package = false;
   _cargo_type = 0;
+  _has_turned = false;
+  _post_turn_encoder_l = 0;
+  _post_turn_encoder_r = 0;
   _line_tracker.reset();
 
   // Reset encoder reference to 0
