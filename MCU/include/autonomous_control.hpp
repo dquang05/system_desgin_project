@@ -11,6 +11,9 @@ enum class TrackState {
     MOVING_TO_PICKUP,    // Normal line tracking until cross-line is detected
     WAITING_FOR_PACKAGE, // Stopped, reading loadcell
     DELAY_BEFORE_START,  // Wait 1s after package is loaded
+    BLIND_RUN_STRAIGHT_1,// Fuzzy: Blind run stage 1 (straight)
+    BLIND_RUN_CURVE,     // Fuzzy: Blind run stage 2 (curve)
+    BLIND_RUN_STRAIGHT_2,// Fuzzy: Blind run stage 3 (straight towards turn)
     DELIVERING_TYPE_1,   // Package 1kg -> Turn Left Smoothly
     DELIVERING_TYPE_2,   // Package 2kg -> Turn Right Smoothly
     FINISHED
@@ -49,6 +52,10 @@ private:
     bool _has_turned{false};
     int64_t _post_turn_encoder_l{0};
     int64_t _post_turn_encoder_r{0};
+
+    // Blind Run encoder tracking
+    int64_t _blind_start_enc_l{0};
+    int64_t _blind_start_enc_r{0};
     
     // Odometry
     int64_t _prev_encoder_l{0};

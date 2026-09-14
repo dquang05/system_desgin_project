@@ -24,9 +24,9 @@ extern wifi_manager::WifiManager wifi;
  */
 void telemetry_task_routine(void *pvParameters) {
   SharedRobotState *state = static_cast<SharedRobotState *>(pvParameters);
-  const TickType_t freq_ticks = pdMS_TO_TICKS(20); // 50Hz Logging Rate
+  const TickType_t freq_ticks = pdMS_TO_TICKS(100); // 50Hz Logging Rate
   TickType_t last_wake_time = xTaskGetTickCount();
-  char json_buf[512];
+  char json_buf[1024];
 
   while (true) {
     // Read isolated snapshot
@@ -41,8 +41,11 @@ void telemetry_task_routine(void *pvParameters) {
         json_buf, sizeof(json_buf),
         "{\"ts\":%lu,\"enc\":[%lld,%lld],\"pwm\":[%.2f,%.2f],\"adc\":[%lu,%lu,%"
         "lu,%lu,%lu],\"rpm_tgt\":[%.2f,%.2f],\"rpm_act\":[%.2f,%.2f],\"e2\":%."
-        "2f,\"weight\":%.2f,\"v_ref\":%.2f,\"v_ref_turn\":%.2f,\"pid\":{\"L\":[%.3f,%.3f,%.3f],"
-        "\"R\":[%.3f,%.3f,%.3f],\"T\":[%.3f,%.3f,%.3f]}}",
+        "2f,\"weight\":%.2f,\"v_ref\":%.2f,\"v_ref_turn\":%.2f,\"pid\":{\"L\":["
+        "%.3f,%.3f,%.3f],"
+        "\"R\":[%.3f,%.3f,%.3f],\"T\":[%.3f,%.3f,%.3f],\"T1\":[%.3f,%.3f,%.3f],"
+        "\"T2\":[%.3f,%.3f,%.3f],\"W\":[%.3f,%.3f]},"
+        "\"fuzzy\":%d,\"blind\":{\"s1\":[%.2f,%.2f,%lld,%lld],\"s2\":[%.2f,%.2f,%lld,%lld],\"s3\":[%.2f,%.2f]}}",
         (uint32_t)(esp_timer_get_time() / 1000), local_state.encoder_left,
         local_state.encoder_right, local_state.pwm_left, local_state.pwm_right,
         local_state.adc_raw[0], local_state.adc_raw[1], local_state.adc_raw[2],
@@ -50,12 +53,33 @@ void telemetry_task_routine(void *pvParameters) {
         local_state.target_rpm_left, local_state.target_rpm_right,
         local_state.actual_rpm_left, local_state.actual_rpm_right,
         local_state.current_e2, local_state.loadcell_weight,
-        local_state.physical_config.v_ref, local_state.physical_config.v_ref_turn,
-        local_state.physical_config.kp_l,
-        local_state.physical_config.ki_l, local_state.physical_config.kd_l,
-        local_state.physical_config.kp_r, local_state.physical_config.ki_r,
-        local_state.physical_config.kd_r, local_state.physical_config.kp,
-        local_state.physical_config.kd, local_state.physical_config.pid_tau);
+        local_state.physical_config.v_ref,
+        local_state.physical_config.v_ref_turn,
+        local_state.physical_config.kp_l, local_state.physical_config.ki_l,
+        local_state.physical_config.kd_l, local_state.physical_config.kp_r,
+        local_state.physical_config.ki_r, local_state.physical_config.kd_r,
+        local_state.physical_config.kp,
+        local_state.physical_config.kd,
+        local_state.physical_config.pid_tau,
+        local_state.physical_config.kp_load1,
+        local_state.physical_config.kd_load1,
+        local_state.physical_config.pid_tau_load1,
+        local_state.physical_config.kp_load2,
+        local_state.physical_config.kd_load2,
+        local_state.physical_config.pid_tau_load2,
+        local_state.physical_config.sensor_weight_04,
+        local_state.physical_config.sensor_weight_13,
+        local_state.track_config.fuzzy_mode ? 1 : 0,
+        local_state.track_config.blind_seg1_rpm_l,
+        local_state.track_config.blind_seg1_rpm_r,
+        local_state.track_config.blind_seg1_pulses_l,
+        local_state.track_config.blind_seg1_pulses_r,
+        local_state.track_config.blind_seg2_rpm_l,
+        local_state.track_config.blind_seg2_rpm_r,
+        local_state.track_config.blind_seg2_pulses_l,
+        local_state.track_config.blind_seg2_pulses_r,
+        local_state.track_config.blind_seg3_rpm_l,
+        local_state.track_config.blind_seg3_rpm_r);
 
     // Decoupled hardware transmission
     if (len > 0 && wifi.is_connected()) {

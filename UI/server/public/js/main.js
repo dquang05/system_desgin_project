@@ -29,7 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const motorMgr = new MotorManager();
     const tuningMgr = new TuningManager(socketMgr);
     const pidTestMgr = new PidTestManager(socketMgr);
-    const dataRecMgr = new DataRecordingManager(socketMgr);
+    const dataRecMgr = new DataRecordingManager(socketMgr, tuningMgr);
     
     // Setup Socket Listeners
     socketMgr.onStatusChange((state) => {

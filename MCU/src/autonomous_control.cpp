@@ -51,8 +51,8 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
       if (state.adc_raw[0] < 500 && state.adc_raw[1] < 500 &&
           state.adc_raw[2] < 500 && state.adc_raw[3] < 500 &&
           state.adc_raw[4] < 500) {
-        
-        if (_has_turned && (state.encoder_l - _post_turn_encoder_l) >= 12000 && 
+
+        if (_has_turned && (state.encoder_l - _post_turn_encoder_l) >= 12000 &&
             (state.encoder_r - _post_turn_encoder_r) >= 12000) {
           // Reached the end of the track
           _current_state = TrackState::FINISHED;
@@ -137,6 +137,19 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
       // to NVS)
       RobotPhysicalConfig dyn_config = state.physical_config;
 
+      // Select proper PID parameters based on load (only if NOT in fuzzy mode)
+      if (_is_carrying_package && !state.track_config.fuzzy_mode) {
+        if (_cargo_type == 1) {
+          dyn_config.kp = dyn_config.kp_load1;
+          dyn_config.kd = dyn_config.kd_load1;
+          dyn_config.pid_tau = dyn_config.pid_tau_load1;
+        } else if (_cargo_type == 2) {
+          dyn_config.kp = dyn_config.kp_load2;
+          dyn_config.kd = dyn_config.kd_load2;
+          dyn_config.pid_tau = dyn_config.pid_tau_load2;
+        }
+      }
+
       // Normal PID
       _line_tracker.compute_target_rpm(e2, PID_OUTER_DT_S, dyn_config,
                                        _last_target_rpm_l, _last_target_rpm_r);
@@ -188,10 +201,74 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
       // Wait 50 ticks (500ms) before starting
       if (_recovery_ticks >= 50) {
         _is_carrying_package = true;
-        _current_state = TrackState::MOVING_TO_PICKUP;
         _recovery_ticks = 0;
         _reference_displacement_mm =
             _total_displacement_mm; // Reset odometry for Y-junction filter
+        _line_tracker.reset();
+
+        if (state.track_config.fuzzy_mode) {
+          // Switch to Blind Run Stage 1 (Straight)
+          _current_state = TrackState::BLIND_RUN_STRAIGHT_1;
+          _blind_start_enc_l = state.encoder_l;
+          _blind_start_enc_r = state.encoder_r;
+          _last_target_rpm_l = state.track_config.blind_seg1_rpm_l;
+          _last_target_rpm_r = state.track_config.blind_seg1_rpm_r;
+        } else {
+          _current_state = TrackState::MOVING_TO_PICKUP;
+        }
+      }
+      break;
+    }
+
+    case TrackState::BLIND_RUN_STRAIGHT_1: {
+      _last_target_rpm_l = state.track_config.blind_seg1_rpm_l;
+      _last_target_rpm_r = state.track_config.blind_seg1_rpm_r;
+
+      int64_t diff_l = std::abs(state.encoder_l - _blind_start_enc_l);
+      int64_t diff_r = std::abs(state.encoder_r - _blind_start_enc_r);
+
+      if (diff_l >= state.track_config.blind_seg1_pulses_l &&
+          diff_r >= state.track_config.blind_seg1_pulses_r) {
+        _current_state = TrackState::BLIND_RUN_CURVE;
+        _blind_start_enc_l = state.encoder_l;
+        _blind_start_enc_r = state.encoder_r;
+        _last_target_rpm_l = state.track_config.blind_seg2_rpm_l;
+        _last_target_rpm_r = state.track_config.blind_seg2_rpm_r;
+      }
+      break;
+    }
+
+    case TrackState::BLIND_RUN_CURVE: {
+      _last_target_rpm_l = state.track_config.blind_seg2_rpm_l;
+      _last_target_rpm_r = state.track_config.blind_seg2_rpm_r;
+
+      int64_t diff_l = std::abs(state.encoder_l - _blind_start_enc_l);
+      int64_t diff_r = std::abs(state.encoder_r - _blind_start_enc_r);
+
+      if (diff_l >= state.track_config.blind_seg2_pulses_l ||
+          diff_r >= state.track_config.blind_seg2_pulses_r) {
+        _current_state = TrackState::BLIND_RUN_STRAIGHT_2;
+        _blind_start_enc_l = state.encoder_l;
+        _blind_start_enc_r = state.encoder_r;
+        _last_target_rpm_l = state.track_config.blind_seg3_rpm_l;
+        _last_target_rpm_r = state.track_config.blind_seg3_rpm_r;
+      }
+      break;
+    }
+
+    case TrackState::BLIND_RUN_STRAIGHT_2: {
+      _last_target_rpm_l = state.track_config.blind_seg3_rpm_l;
+      _last_target_rpm_r = state.track_config.blind_seg3_rpm_r;
+
+      // Condition to transition: Detect turn / Y-junction on ADC
+      // Center sensors detect black line while turning area is entered
+      if (state.adc_raw[1] > 2000 || state.adc_raw[2] > 2000 || state.adc_raw[3] > 2000) {
+        if (_cargo_type == 1) {
+          _current_state = TrackState::DELIVERING_TYPE_1;
+        } else {
+          _current_state = TrackState::DELIVERING_TYPE_2;
+        }
+        _recovery_ticks = 0;
         _line_tracker.reset();
       }
       break;
@@ -200,7 +277,8 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
     case TrackState::DELIVERING_TYPE_1: {
       // Type 1: Turn Left using Sensor Masking & PID
       RobotPhysicalConfig dyn_config = state.physical_config;
-      dyn_config.v_ref = state.physical_config.v_ref_turn; // Slower speed for turning
+      dyn_config.v_ref =
+          state.physical_config.v_ref_turn; // Slower speed for turning
 
       _line_tracker.compute_target_rpm(e2, PID_OUTER_DT_S, dyn_config,
                                        _last_target_rpm_l, _last_target_rpm_r);
@@ -220,7 +298,8 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
     case TrackState::DELIVERING_TYPE_2: {
       // Type 2: Turn Right using Sensor Masking & PID
       RobotPhysicalConfig dyn_config = state.physical_config;
-      dyn_config.v_ref = state.physical_config.v_ref_turn; // Slower speed for turning
+      dyn_config.v_ref =
+          state.physical_config.v_ref_turn; // Slower speed for turning
 
       _line_tracker.compute_target_rpm(e2, PID_OUTER_DT_S, dyn_config,
                                        _last_target_rpm_l, _last_target_rpm_r);
@@ -264,6 +343,8 @@ void AutonomousControl::reset() {
   _has_turned = false;
   _post_turn_encoder_l = 0;
   _post_turn_encoder_r = 0;
+  _blind_start_enc_l = 0;
+  _blind_start_enc_r = 0;
   _line_tracker.reset();
 
   // Reset encoder reference to 0

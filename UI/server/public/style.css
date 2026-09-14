@@ -105,6 +105,18 @@ body {
 
 .btn.secondary:hover { background: var(--border); }
 
+.btn.fuzzy-on {
+    background: rgba(63, 185, 80, 0.2);
+    color: #3fb950;
+    border-color: rgba(63, 185, 80, 0.5);
+    font-weight: 600;
+}
+
+.btn.fuzzy-on:hover {
+    background: #238636;
+    color: white;
+}
+
 .toggle {
     display: flex;
     align-items: center;

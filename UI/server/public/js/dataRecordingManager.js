@@ -1,6 +1,7 @@
 export class DataRecordingManager {
-    constructor(socketMgr) {
+    constructor(socketMgr, tuningMgr) {
         this.socketMgr = socketMgr;
+        this.tuningMgr = tuningMgr;
         
         // Data arrays
         this.isRecording = false;

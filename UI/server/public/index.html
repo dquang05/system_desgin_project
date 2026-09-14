@@ -36,6 +36,7 @@
             <button id="btn-stop" class="btn warning">Stop System</button>
             <button id="btn-test-pid" class="btn primary" style="margin-left: 20px;">Test PID</button>
             <button id="btn-clear" class="btn secondary" style="margin-left: 20px;">Clear Log</button>
+            <button id="btn-toggle-fuzzy" class="btn secondary" style="margin-left: 10px;" title="Toggle Fuzzy Mode (sent on Test Tune)">Fuzzy: OFF</button>
             
             <label class="toggle">
                 <input type="checkbox" id="toggle-autoscroll" checked>
@@ -103,18 +104,18 @@
                             </div>
                             <div class="tuning-row">
                                 <span class="tuning-label">Kp</span>
-                                <span class="tuning-active" id="active-kp-l">0.000</span>
-                                <input type="number" id="input-kp-l" step="0.001" value="0.000">
+                                <span class="tuning-active" id="active-kp-l">0.0000</span>
+                                <input type="number" id="input-kp-l" step="0.0001" value="0.0000">
                             </div>
                             <div class="tuning-row">
                                 <span class="tuning-label">Ki</span>
-                                <span class="tuning-active" id="active-ki-l">0.000</span>
-                                <input type="number" id="input-ki-l" step="0.001" value="0.000">
+                                <span class="tuning-active" id="active-ki-l">0.0000</span>
+                                <input type="number" id="input-ki-l" step="0.0001" value="0.0000">
                             </div>
                             <div class="tuning-row">
                                 <span class="tuning-label">Kd</span>
-                                <span class="tuning-active" id="active-kd-l">0.000</span>
-                                <input type="number" id="input-kd-l" step="0.001" value="0.000">
+                                <span class="tuning-active" id="active-kd-l">0.0000</span>
+                                <input type="number" id="input-kd-l" step="0.0001" value="0.0000">
                             </div>
                         </div>
                     </div>
@@ -161,18 +162,18 @@
                             </div>
                             <div class="tuning-row">
                                 <span class="tuning-label">Kp</span>
-                                <span class="tuning-active" id="active-kp-r">0.000</span>
-                                <input type="number" id="input-kp-r" step="0.001" value="0.000">
+                                <span class="tuning-active" id="active-kp-r">0.0000</span>
+                                <input type="number" id="input-kp-r" step="0.0001" value="0.0000">
                             </div>
                             <div class="tuning-row">
                                 <span class="tuning-label">Ki</span>
-                                <span class="tuning-active" id="active-ki-r">0.000</span>
-                                <input type="number" id="input-ki-r" step="0.001" value="0.000">
+                                <span class="tuning-active" id="active-ki-r">0.0000</span>
+                                <input type="number" id="input-ki-r" step="0.0001" value="0.0000">
                             </div>
                             <div class="tuning-row">
                                 <span class="tuning-label">Kd</span>
-                                <span class="tuning-active" id="active-kd-r">0.000</span>
-                                <input type="number" id="input-kd-r" step="0.001" value="0.000">
+                                <span class="tuning-active" id="active-kd-r">0.0000</span>
+                                <input type="number" id="input-kd-r" step="0.0001" value="0.0000">
                             </div>
                         </div>
                     </div>
@@ -199,45 +200,8 @@
                     </div>
                 </div>
 
-                <!-- Line Tracker PID and Loadcell -->
-                <div class="motor-grid" style="margin-top: 24px;">
-                    <!-- Line Tracker Tuning -->
-                    <div class="motor-card">
-                        <h3>Line Tracker PID</h3>
-                        <div class="tuning-card" style="border: none; padding: 0; background: transparent;">
-                            <div class="tuning-row header">
-                                <span>Param</span>
-                                <span>Active</span>
-                                <span>New</span>
-                            </div>
-                            <div class="tuning-row">
-                                <span class="tuning-label">Kp</span>
-                                <span class="tuning-active" id="active-kp-t">0.000</span>
-                                <input type="number" id="input-kp-t" step="0.001" value="0.000">
-                            </div>
-                            <div class="tuning-row">
-                                <span class="tuning-label">Ki</span>
-                                <span class="tuning-active" id="active-ki-t">0.000</span>
-                                <input type="number" id="input-ki-t" step="0.001" value="0.000">
-                            </div>
-                            <div class="tuning-row">
-                                <span class="tuning-label">Kd</span>
-                                <span class="tuning-active" id="active-kd-t">0.000</span>
-                                <input type="number" id="input-kd-t" step="0.001" value="0.000">
-                            </div>
-                            <div class="tuning-row" style="margin-top: 15px; border-top: 1px solid var(--border); padding-top: 15px;">
-                                <span class="tuning-label" style="font-weight: 600; color: var(--accent);">Velocity (v_ref)</span>
-                                <span class="tuning-active" id="active-v-ref">0.0</span>
-                                <input type="number" id="input-v-ref" step="10" value="200.0">
-                            </div>
-                            <div class="tuning-row">
-                                <span class="tuning-label" style="font-weight: 600; color: var(--accent);">Turn Vel (v_ref_turn)</span>
-                                <span class="tuning-active" id="active-v-ref-turn">0.0</span>
-                                <input type="number" id="input-v-ref-turn" step="10" value="500.0">
-                            </div>
-                        </div>
-                    </div>
-
+                <!-- Auxiliary Sensors & Configuration (Row 1) -->
+                <div class="motor-grid" style="margin-top: 24px; max-width: 100%;">
                     <!-- Loadcell -->
                     <div class="motor-card">
                         <h3>Loadcell</h3>
@@ -251,6 +215,223 @@
                         </div>
                         <div class="chart-container" style="height: 200px; margin-top: 15px; padding: 0;">
                             <canvas id="weight-chart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Velocity Settings -->
+                    <div class="motor-card">
+                        <h3>Velocity Configuration</h3>
+                        <div class="tuning-card" style="border: none; padding: 0; background: transparent;">
+                            <div class="tuning-row header">
+                                <span>Param</span>
+                                <span>Active</span>
+                                <span>New</span>
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Velocity (v_ref)</span>
+                                <span class="tuning-active" id="active-v-ref">0.0</span>
+                                <input type="number" id="input-v-ref" step="10" value="200.0">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Turn Vel (v_ref_turn)</span>
+                                <span class="tuning-active" id="active-v-ref-turn">0.0</span>
+                                <input type="number" id="input-v-ref-turn" step="10" value="500.0">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sensor Weights -->
+                    <div class="motor-card">
+                        <h3>Sensor Weights</h3>
+                        <div class="tuning-card" style="border: none; padding: 0; background: transparent;">
+                            <div class="tuning-row header">
+                                <span>Param</span>
+                                <span>Active</span>
+                                <span>New</span>
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Outer (0 & 4)</span>
+                                <span class="tuning-active" id="active-w-04">0.0</span>
+                                <input type="number" id="input-w-04" step="0.5" value="4.0">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Inner (1 & 3)</span>
+                                <span class="tuning-active" id="active-w-13">0.0</span>
+                                <input type="number" id="input-w-13" step="0.5" value="2.0">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Line Tracker PIDs (Row 2) -->
+                <div class="motor-grid" style="margin-top: 24px; max-width: 100%;">
+                    <!-- Line Tracker Base (No Load) -->
+                    <div class="motor-card">
+                        <h3>Line Tracker (Base/No Load)</h3>
+                        <div class="tuning-card" style="border: none; padding: 0; background: transparent;">
+                            <div class="tuning-row header">
+                                <span>Param</span>
+                                <span>Active</span>
+                                <span>New</span>
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Kp</span>
+                                <span class="tuning-active" id="active-kp-t">0.000</span>
+                                <input type="number" id="input-kp-t" step="0.001" value="0.000">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Kd</span>
+                                <span class="tuning-active" id="active-kd-t">0.000</span>
+                                <input type="number" id="input-kd-t" step="0.001" value="0.000">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Tau</span>
+                                <span class="tuning-active" id="active-tau-t">0.000</span>
+                                <input type="number" id="input-tau-t" step="0.001" value="0.050">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Line Tracker Load 1 (T1) -->
+                    <div class="motor-card">
+                        <h3>Line Tracker (Load 1)</h3>
+                        <div class="tuning-card" style="border: none; padding: 0; background: transparent;">
+                            <div class="tuning-row header">
+                                <span>Param</span>
+                                <span>Active</span>
+                                <span>New</span>
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Kp</span>
+                                <span class="tuning-active" id="active-kp-t1">0.000</span>
+                                <input type="number" id="input-kp-t1" step="0.001" value="0.000">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Kd</span>
+                                <span class="tuning-active" id="active-kd-t1">0.000</span>
+                                <input type="number" id="input-kd-t1" step="0.001" value="0.000">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Tau</span>
+                                <span class="tuning-active" id="active-tau-t1">0.000</span>
+                                <input type="number" id="input-tau-t1" step="0.001" value="0.050">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Line Tracker Load 2 (T2) -->
+                    <div class="motor-card">
+                        <h3>Line Tracker (Load 2)</h3>
+                        <div class="tuning-card" style="border: none; padding: 0; background: transparent;">
+                            <div class="tuning-row header">
+                                <span>Param</span>
+                                <span>Active</span>
+                                <span>New</span>
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Kp</span>
+                                <span class="tuning-active" id="active-kp-t2">0.000</span>
+                                <input type="number" id="input-kp-t2" step="0.001" value="0.000">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Kd</span>
+                                <span class="tuning-active" id="active-kd-t2">0.000</span>
+                                <input type="number" id="input-kd-t2" step="0.001" value="0.000">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Tau</span>
+                                <span class="tuning-active" id="active-tau-t2">0.000</span>
+                                <input type="number" id="input-tau-t2" step="0.001" value="0.050">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Blind Run Configuration (Row 3) -->
+                <div class="motor-grid" style="margin-top: 24px; max-width: 100%;">
+                    <!-- Blind Segment 1 (Straight 1) -->
+                    <div class="motor-card">
+                        <h3>Blind Run 1 (Straight 1)</h3>
+                        <div class="tuning-card" style="border: none; padding: 0; background: transparent;">
+                            <div class="tuning-row header">
+                                <span>Param</span>
+                                <span>Active</span>
+                                <span>New</span>
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">RPM Left</span>
+                                <span class="tuning-active" id="active-blind-s1-rpm-l">0.0</span>
+                                <input type="number" id="input-blind-s1-rpm-l" step="1" value="80.0">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">RPM Right</span>
+                                <span class="tuning-active" id="active-blind-s1-rpm-r">0.0</span>
+                                <input type="number" id="input-blind-s1-rpm-r" step="1" value="80.0">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Pulses Left</span>
+                                <span class="tuning-active" id="active-blind-s1-pulses-l">0</span>
+                                <input type="number" id="input-blind-s1-pulses-l" step="50" value="1000">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Pulses Right</span>
+                                <span class="tuning-active" id="active-blind-s1-pulses-r">0</span>
+                                <input type="number" id="input-blind-s1-pulses-r" step="50" value="1000">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Blind Segment 2 (Curve / Turn) -->
+                    <div class="motor-card">
+                        <h3>Blind Run 2 (Turn)</h3>
+                        <div class="tuning-card" style="border: none; padding: 0; background: transparent;">
+                            <div class="tuning-row header">
+                                <span>Param</span>
+                                <span>Active</span>
+                                <span>New</span>
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">RPM Left</span>
+                                <span class="tuning-active" id="active-blind-s2-rpm-l">0.0</span>
+                                <input type="number" id="input-blind-s2-rpm-l" step="1" value="60.0">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">RPM Right</span>
+                                <span class="tuning-active" id="active-blind-s2-rpm-r">0.0</span>
+                                <input type="number" id="input-blind-s2-rpm-r" step="1" value="100.0">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Pulses Left</span>
+                                <span class="tuning-active" id="active-blind-s2-pulses-l">0</span>
+                                <input type="number" id="input-blind-s2-pulses-l" step="50" value="1500">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">Pulses Right</span>
+                                <span class="tuning-active" id="active-blind-s2-pulses-r">0</span>
+                                <input type="number" id="input-blind-s2-pulses-r" step="50" value="1500">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Blind Segment 3 (Straight 2 - Wait for Junction) -->
+                    <div class="motor-card">
+                        <h3>Blind Run 3 (Straight 2)</h3>
+                        <div class="tuning-card" style="border: none; padding: 0; background: transparent;">
+                            <div class="tuning-row header">
+                                <span>Param</span>
+                                <span>Active</span>
+                                <span>New</span>
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">RPM Left</span>
+                                <span class="tuning-active" id="active-blind-s3-rpm-l">0.0</span>
+                                <input type="number" id="input-blind-s3-rpm-l" step="1" value="80.0">
+                            </div>
+                            <div class="tuning-row">
+                                <span class="tuning-label">RPM Right</span>
+                                <span class="tuning-active" id="active-blind-s3-rpm-r">0.0</span>
+                                <input type="number" id="input-blind-s3-rpm-r" step="1" value="80.0">
+                            </div>
                         </div>
                     </div>
                 </div>

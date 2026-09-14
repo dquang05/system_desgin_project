@@ -80,6 +80,14 @@ SharedRobotState robot_state = {
                         .kp = DEFAULT_KP,
                         .kd = DEFAULT_KD,
                         .pid_tau = DEFAULT_PID_TAU,
+                        .kp_load1 = DEFAULT_KP_LOAD1,
+                        .kd_load1 = DEFAULT_KD_LOAD1,
+                        .pid_tau_load1 = DEFAULT_PID_TAU_LOAD1,
+                        .kp_load2 = DEFAULT_KP_LOAD2,
+                        .kd_load2 = DEFAULT_KD_LOAD2,
+                        .pid_tau_load2 = DEFAULT_PID_TAU_LOAD2,
+                        .sensor_weight_04 = DEFAULT_SENSOR_WEIGHT_04,
+                        .sensor_weight_13 = DEFAULT_SENSOR_WEIGHT_13,
                         .kp_l = DEFAULT_KP_L,
                         .ki_l = DEFAULT_KI_L,
                         .kd_l = DEFAULT_KD_L,
@@ -89,11 +97,22 @@ SharedRobotState robot_state = {
     .track_config = {.encoder_ppr = 341.2f,
                      .turn_phase1_outer_rpm = 50.0f,
                      .turn_phase1_inner_rpm = 0.0f,
-                     .turn_phase1_timeout_ticks = 4, // 4 ticks * 50ms = 200ms
+                     .turn_phase1_timeout_ticks = 8, // 6 ticks * 50ms = 400ms
                      .loadcell_type1_min = 800.0f,
                      .loadcell_type1_max = 1200.0f,
                      .loadcell_type2_min = 1800.0f,
-                     .loadcell_type2_max = 2200.0f},
+                     .loadcell_type2_max = 2200.0f,
+                     .fuzzy_mode = DEFAULT_FUZZY_MODE,
+                     .blind_seg1_rpm_l = DEFAULT_BLIND_SEG1_RPM_L,
+                     .blind_seg1_rpm_r = DEFAULT_BLIND_SEG1_RPM_R,
+                     .blind_seg1_pulses_l = DEFAULT_BLIND_SEG1_PULSES_L,
+                     .blind_seg1_pulses_r = DEFAULT_BLIND_SEG1_PULSES_R,
+                     .blind_seg2_rpm_l = DEFAULT_BLIND_SEG2_RPM_L,
+                     .blind_seg2_rpm_r = DEFAULT_BLIND_SEG2_RPM_R,
+                     .blind_seg2_pulses_l = DEFAULT_BLIND_SEG2_PULSES_L,
+                     .blind_seg2_pulses_r = DEFAULT_BLIND_SEG2_PULSES_R,
+                     .blind_seg3_rpm_l = DEFAULT_BLIND_SEG3_RPM_L,
+                     .blind_seg3_rpm_r = DEFAULT_BLIND_SEG3_RPM_R},
     .system_running = false,
     .soft_stop_request = false,
     .test_mode_active = false,
@@ -154,7 +173,7 @@ void loadcell_task(void *pvParameters) {
     state->loadcell_weight = weight;
     portEXIT_CRITICAL(&state->spinlock);
 
-    vTaskDelay(pdMS_TO_TICKS(10));
+    vTaskDelay(pdMS_TO_TICKS(50));
   }
 }
 
@@ -200,14 +219,31 @@ void wifi_toggle_task(void *pvParameters) {
 
 struct NvsPidData {
   float kp, kd, pid_tau;
+  float kp_load1, kd_load1, pid_tau_load1;
+  float kp_load2, kd_load2, pid_tau_load2;
+  float sensor_weight_04, sensor_weight_13;
   float kp_l, ki_l, kd_l;
   float kp_r, ki_r, kd_r;
   float v_ref;
   float v_ref_turn;
 };
 
+struct NvsBlindData {
+  bool fuzzy_mode;
+  float blind_seg1_rpm_l;
+  float blind_seg1_rpm_r;
+  int64_t blind_seg1_pulses_l;
+  int64_t blind_seg1_pulses_r;
+  float blind_seg2_rpm_l;
+  float blind_seg2_rpm_r;
+  int64_t blind_seg2_pulses_l;
+  int64_t blind_seg2_pulses_r;
+  float blind_seg3_rpm_l;
+  float blind_seg3_rpm_r;
+};
+
 /**
- * @brief Loads PID parameters from NVS flash memory.
+ * @brief Loads PID and Blind run parameters from NVS flash memory.
  *
  * @param state Reference to the global SharedRobotState where config will be
  * stored.
@@ -228,6 +264,14 @@ void load_nvs_params(SharedRobotState &state) {
     state.physical_config.kp = pid_data.kp;
     state.physical_config.kd = pid_data.kd;
     state.physical_config.pid_tau = pid_data.pid_tau;
+    state.physical_config.kp_load1 = pid_data.kp_load1;
+    state.physical_config.kd_load1 = pid_data.kd_load1;
+    state.physical_config.pid_tau_load1 = pid_data.pid_tau_load1;
+    state.physical_config.kp_load2 = pid_data.kp_load2;
+    state.physical_config.kd_load2 = pid_data.kd_load2;
+    state.physical_config.pid_tau_load2 = pid_data.pid_tau_load2;
+    state.physical_config.sensor_weight_04 = pid_data.sensor_weight_04;
+    state.physical_config.sensor_weight_13 = pid_data.sensor_weight_13;
     state.physical_config.kp_l = pid_data.kp_l;
     state.physical_config.ki_l = pid_data.ki_l;
     state.physical_config.kd_l = pid_data.kd_l;
@@ -240,6 +284,27 @@ void load_nvs_params(SharedRobotState &state) {
   } else {
     ESP_LOGW(TAG, "Failed to load PID params from NVS (using defaults).");
   }
+
+  NvsBlindData blind_data;
+  size_t blind_size = sizeof(NvsBlindData);
+  err = nvs_get_blob(my_handle, "blind_cfg", &blind_data, &blind_size);
+  if (err == ESP_OK) {
+    state.track_config.fuzzy_mode = blind_data.fuzzy_mode;
+    state.track_config.blind_seg1_rpm_l = blind_data.blind_seg1_rpm_l;
+    state.track_config.blind_seg1_rpm_r = blind_data.blind_seg1_rpm_r;
+    state.track_config.blind_seg1_pulses_l = blind_data.blind_seg1_pulses_l;
+    state.track_config.blind_seg1_pulses_r = blind_data.blind_seg1_pulses_r;
+    state.track_config.blind_seg2_rpm_l = blind_data.blind_seg2_rpm_l;
+    state.track_config.blind_seg2_rpm_r = blind_data.blind_seg2_rpm_r;
+    state.track_config.blind_seg2_pulses_l = blind_data.blind_seg2_pulses_l;
+    state.track_config.blind_seg2_pulses_r = blind_data.blind_seg2_pulses_r;
+    state.track_config.blind_seg3_rpm_l = blind_data.blind_seg3_rpm_l;
+    state.track_config.blind_seg3_rpm_r = blind_data.blind_seg3_rpm_r;
+    ESP_LOGI(TAG, "Loaded Blind Run / Fuzzy params from NVS successfully.");
+  } else {
+    ESP_LOGW(TAG, "Failed to load Blind Run params from NVS (using defaults).");
+  }
+
   nvs_close(my_handle);
 }
 
@@ -257,24 +322,53 @@ void save_nvs_params(const SharedRobotState &state) {
     return;
   }
 
-  NvsPidData pid_data = {.kp = state.physical_config.kp,
-                         .kd = state.physical_config.kd,
-                         .pid_tau = state.physical_config.pid_tau,
-                         .kp_l = state.physical_config.kp_l,
-                         .ki_l = state.physical_config.ki_l,
-                         .kd_l = state.physical_config.kd_l,
-                         .kp_r = state.physical_config.kp_r,
-                         .ki_r = state.physical_config.ki_r,
-                         .kd_r = state.physical_config.kd_r,
-                         .v_ref = state.physical_config.v_ref,
-                         .v_ref_turn = state.physical_config.v_ref_turn};
+  NvsPidData pid_data = {
+      .kp = state.physical_config.kp,
+      .kd = state.physical_config.kd,
+      .pid_tau = state.physical_config.pid_tau,
+      .kp_load1 = state.physical_config.kp_load1,
+      .kd_load1 = state.physical_config.kd_load1,
+      .pid_tau_load1 = state.physical_config.pid_tau_load1,
+      .kp_load2 = state.physical_config.kp_load2,
+      .kd_load2 = state.physical_config.kd_load2,
+      .pid_tau_load2 = state.physical_config.pid_tau_load2,
+      .sensor_weight_04 = state.physical_config.sensor_weight_04,
+      .sensor_weight_13 = state.physical_config.sensor_weight_13,
+      .kp_l = state.physical_config.kp_l,
+      .ki_l = state.physical_config.ki_l,
+      .kd_l = state.physical_config.kd_l,
+      .kp_r = state.physical_config.kp_r,
+      .ki_r = state.physical_config.ki_r,
+      .kd_r = state.physical_config.kd_r,
+      .v_ref = state.physical_config.v_ref,
+      .v_ref_turn = state.physical_config.v_ref_turn};
 
   err = nvs_set_blob(my_handle, "pid_cfg", &pid_data, sizeof(NvsPidData));
   if (err == ESP_OK) {
-    err = nvs_commit(my_handle);
-    if (err == ESP_OK) {
-      ESP_LOGI(TAG, "Saved PID params to NVS successfully.");
-    }
+    ESP_LOGI(TAG, "Saved PID params to NVS blob.");
+  }
+
+  NvsBlindData blind_data = {
+      .fuzzy_mode = state.track_config.fuzzy_mode,
+      .blind_seg1_rpm_l = state.track_config.blind_seg1_rpm_l,
+      .blind_seg1_rpm_r = state.track_config.blind_seg1_rpm_r,
+      .blind_seg1_pulses_l = state.track_config.blind_seg1_pulses_l,
+      .blind_seg1_pulses_r = state.track_config.blind_seg1_pulses_r,
+      .blind_seg2_rpm_l = state.track_config.blind_seg2_rpm_l,
+      .blind_seg2_rpm_r = state.track_config.blind_seg2_rpm_r,
+      .blind_seg2_pulses_l = state.track_config.blind_seg2_pulses_l,
+      .blind_seg2_pulses_r = state.track_config.blind_seg2_pulses_r,
+      .blind_seg3_rpm_l = state.track_config.blind_seg3_rpm_l,
+      .blind_seg3_rpm_r = state.track_config.blind_seg3_rpm_r};
+
+  err = nvs_set_blob(my_handle, "blind_cfg", &blind_data, sizeof(NvsBlindData));
+  if (err == ESP_OK) {
+    ESP_LOGI(TAG, "Saved Blind Run params to NVS blob.");
+  }
+
+  err = nvs_commit(my_handle);
+  if (err == ESP_OK) {
+    ESP_LOGI(TAG, "NVS commit successful.");
   }
   nvs_close(my_handle);
 }
@@ -361,14 +455,23 @@ void udp_receiver_task(void *pvParameters) {
           cJSON *pid_l = cJSON_GetObjectItemCaseSensitive(json, "pid_L");
           cJSON *pid_r = cJSON_GetObjectItemCaseSensitive(json, "pid_R");
           cJSON *pid_t = cJSON_GetObjectItemCaseSensitive(json, "pid_T");
+          cJSON *pid_t_1 = cJSON_GetObjectItemCaseSensitive(json, "pid_T_1");
+          cJSON *pid_t_2 = cJSON_GetObjectItemCaseSensitive(json, "pid_T_2");
+          cJSON *sensor_weights =
+              cJSON_GetObjectItemCaseSensitive(json, "sensor_weights");
           cJSON *v_ref_json = cJSON_GetObjectItemCaseSensitive(json, "v_ref");
-          cJSON *v_ref_turn_json = cJSON_GetObjectItemCaseSensitive(json, "v_ref_turn");
+          cJSON *v_ref_turn_json =
+              cJSON_GetObjectItemCaseSensitive(json, "v_ref_turn");
 
           bool update_l = false, update_r = false, update_t = false,
+               update_t_1 = false, update_t_2 = false, update_w = false,
                update_v = false, update_v_turn = false;
           float l_p, l_i, l_d;
           float r_p, r_i, r_d;
-          float t_p, t_d, t_tau;
+          float t_p, t_d, t_tau = -1.0f;
+          float t1_p, t1_d, t1_tau = -1.0f;
+          float t2_p, t2_d, t2_tau = -1.0f;
+          float w_04, w_13;
           float v_ref, v_ref_turn;
 
           if (cJSON_IsArray(pid_l) && cJSON_GetArraySize(pid_l) == 3) {
@@ -383,11 +486,35 @@ void udp_receiver_task(void *pvParameters) {
             r_d = cJSON_GetArrayItem(pid_r, 2)->valuedouble;
             update_r = true;
           }
-          if (cJSON_IsArray(pid_t) && cJSON_GetArraySize(pid_t) == 3) {
+          if (cJSON_IsArray(pid_t) && cJSON_GetArraySize(pid_t) >= 2) {
             t_p = cJSON_GetArrayItem(pid_t, 0)->valuedouble;
             t_d = cJSON_GetArrayItem(pid_t, 1)->valuedouble;
-            t_tau = cJSON_GetArrayItem(pid_t, 2)->valuedouble;
+            if (cJSON_GetArraySize(pid_t) >= 3) {
+              t_tau = cJSON_GetArrayItem(pid_t, 2)->valuedouble;
+            }
             update_t = true;
+          }
+          if (cJSON_IsArray(pid_t_1) && cJSON_GetArraySize(pid_t_1) >= 2) {
+            t1_p = cJSON_GetArrayItem(pid_t_1, 0)->valuedouble;
+            t1_d = cJSON_GetArrayItem(pid_t_1, 1)->valuedouble;
+            if (cJSON_GetArraySize(pid_t_1) >= 3) {
+              t1_tau = cJSON_GetArrayItem(pid_t_1, 2)->valuedouble;
+            }
+            update_t_1 = true;
+          }
+          if (cJSON_IsArray(pid_t_2) && cJSON_GetArraySize(pid_t_2) >= 2) {
+            t2_p = cJSON_GetArrayItem(pid_t_2, 0)->valuedouble;
+            t2_d = cJSON_GetArrayItem(pid_t_2, 1)->valuedouble;
+            if (cJSON_GetArraySize(pid_t_2) >= 3) {
+              t2_tau = cJSON_GetArrayItem(pid_t_2, 2)->valuedouble;
+            }
+            update_t_2 = true;
+          }
+          if (cJSON_IsArray(sensor_weights) &&
+              cJSON_GetArraySize(sensor_weights) == 2) {
+            w_04 = cJSON_GetArrayItem(sensor_weights, 0)->valuedouble;
+            w_13 = cJSON_GetArrayItem(sensor_weights, 1)->valuedouble;
+            update_w = true;
           }
           if (cJSON_IsNumber(v_ref_json)) {
             v_ref = v_ref_json->valuedouble;
@@ -398,7 +525,63 @@ void udp_receiver_task(void *pvParameters) {
             update_v_turn = true;
           }
 
+          cJSON *fuzzy_json = cJSON_GetObjectItemCaseSensitive(json, "fuzzy");
+          cJSON *blind_s1 = cJSON_GetObjectItemCaseSensitive(json, "blind_s1");
+          cJSON *blind_s2 = cJSON_GetObjectItemCaseSensitive(json, "blind_s2");
+          cJSON *blind_s3 = cJSON_GetObjectItemCaseSensitive(json, "blind_s3");
+
+          bool update_fuzzy = false, update_bs1 = false, update_bs2 = false, update_bs3 = false;
+          bool fuzzy_val = false;
+          float bs1_rl = 0.0f, bs1_rr = 0.0f;
+          int64_t bs1_pl = 0, bs1_pr = 0;
+          float bs2_rl = 0.0f, bs2_rr = 0.0f;
+          int64_t bs2_pl = 0, bs2_pr = 0;
+          float bs3_rl = 0.0f, bs3_rr = 0.0f;
+
+          if (cJSON_IsBool(fuzzy_json)) {
+            fuzzy_val = cJSON_IsTrue(fuzzy_json);
+            update_fuzzy = true;
+          }
+          if (cJSON_IsArray(blind_s1) && cJSON_GetArraySize(blind_s1) == 4) {
+            bs1_rl = cJSON_GetArrayItem(blind_s1, 0)->valuedouble;
+            bs1_rr = cJSON_GetArrayItem(blind_s1, 1)->valuedouble;
+            bs1_pl = (int64_t)cJSON_GetArrayItem(blind_s1, 2)->valuedouble;
+            bs1_pr = (int64_t)cJSON_GetArrayItem(blind_s1, 3)->valuedouble;
+            update_bs1 = true;
+          }
+          if (cJSON_IsArray(blind_s2) && cJSON_GetArraySize(blind_s2) == 4) {
+            bs2_rl = cJSON_GetArrayItem(blind_s2, 0)->valuedouble;
+            bs2_rr = cJSON_GetArrayItem(blind_s2, 1)->valuedouble;
+            bs2_pl = (int64_t)cJSON_GetArrayItem(blind_s2, 2)->valuedouble;
+            bs2_pr = (int64_t)cJSON_GetArrayItem(blind_s2, 3)->valuedouble;
+            update_bs2 = true;
+          }
+          if (cJSON_IsArray(blind_s3) && cJSON_GetArraySize(blind_s3) == 2) {
+            bs3_rl = cJSON_GetArrayItem(blind_s3, 0)->valuedouble;
+            bs3_rr = cJSON_GetArrayItem(blind_s3, 1)->valuedouble;
+            update_bs3 = true;
+          }
+
           portENTER_CRITICAL(&state->spinlock);
+          if (update_fuzzy) {
+            state->track_config.fuzzy_mode = fuzzy_val;
+          }
+          if (update_bs1) {
+            state->track_config.blind_seg1_rpm_l = bs1_rl;
+            state->track_config.blind_seg1_rpm_r = bs1_rr;
+            state->track_config.blind_seg1_pulses_l = bs1_pl;
+            state->track_config.blind_seg1_pulses_r = bs1_pr;
+          }
+          if (update_bs2) {
+            state->track_config.blind_seg2_rpm_l = bs2_rl;
+            state->track_config.blind_seg2_rpm_r = bs2_rr;
+            state->track_config.blind_seg2_pulses_l = bs2_pl;
+            state->track_config.blind_seg2_pulses_r = bs2_pr;
+          }
+          if (update_bs3) {
+            state->track_config.blind_seg3_rpm_l = bs3_rl;
+            state->track_config.blind_seg3_rpm_r = bs3_rr;
+          }
           if (update_l) {
             state->physical_config.kp_l = l_p;
             state->physical_config.ki_l = l_i;
@@ -412,7 +595,27 @@ void udp_receiver_task(void *pvParameters) {
           if (update_t) {
             state->physical_config.kp = t_p;
             state->physical_config.kd = t_d;
-            state->physical_config.pid_tau = t_tau;
+            if (t_tau >= 0.0f) {
+              state->physical_config.pid_tau = t_tau;
+            }
+          }
+          if (update_t_1) {
+            state->physical_config.kp_load1 = t1_p;
+            state->physical_config.kd_load1 = t1_d;
+            if (t1_tau >= 0.0f) {
+              state->physical_config.pid_tau_load1 = t1_tau;
+            }
+          }
+          if (update_t_2) {
+            state->physical_config.kp_load2 = t2_p;
+            state->physical_config.kd_load2 = t2_d;
+            if (t2_tau >= 0.0f) {
+              state->physical_config.pid_tau_load2 = t2_tau;
+            }
+          }
+          if (update_w) {
+            state->physical_config.sensor_weight_04 = w_04;
+            state->physical_config.sensor_weight_13 = w_13;
           }
           if (update_v) {
             state->physical_config.v_ref = v_ref;
