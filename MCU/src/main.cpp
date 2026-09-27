@@ -30,23 +30,11 @@ static const char *TAG = "ORCHESTRATOR";
 
 /**
  * ============================================================================
- * \todo Calibration: SENSOR THRESHOLDS AND LINE COEFFICIENTS
+ * \todo 3-SEGMENT GAIN SCHEDULING & PID PROFILE PLAN
  * ============================================================================
- * \par x_max and x_min:
- * These represent the maximum and minimum thresholds for the 5 sensor eyes.
- * Instead of hardcoding {4095} and {0}, actual parameters measured from each
- * eye (e.g., 14, 12, 17, 11, 19... for the white region x_min) should be filled
- * in.
- *
- * \par y_max and y_min:
- * Keep as (1000 and 0) according to scale mapping theory.
- *
- * \par line_coe_1 and line_coe_2:
- * These are the linear approximation coefficients of the weighted average
- * algorithm (final calibration formula to get actual distance in mm).
- * As calculated in previous steps, they should be updated to:
- * .line_coe_1 = 1.229f
- * .line_coe_2 = 1.272f
+ * \par Goal:
+ * Change 3 package of PID parameter for diferrents road segments
+
  * ============================================================================
  */
 
@@ -112,7 +100,13 @@ SharedRobotState robot_state = {
                      .blind_seg2_pulses_l = DEFAULT_BLIND_SEG2_PULSES_L,
                      .blind_seg2_pulses_r = DEFAULT_BLIND_SEG2_PULSES_R,
                      .blind_seg3_rpm_l = DEFAULT_BLIND_SEG3_RPM_L,
-                     .blind_seg3_rpm_r = DEFAULT_BLIND_SEG3_RPM_R},
+                     .blind_seg3_rpm_r = DEFAULT_BLIND_SEG3_RPM_R,
+                     .pickup_stop_pulses = 10800,
+                     .pickup_decel_pulses = 10000,
+                     .finish_stop_pulses = 10000,
+                     .finish_decel_pulses = 10000,
+                     .decel_ratio = 0.65f,
+                     .finish_decel_ratio = 0.40f},
     .system_running = false,
     .soft_stop_request = false,
     .test_mode_active = false,
@@ -409,18 +403,28 @@ void udp_receiver_task(void *pvParameters) {
     return;
   }
 
+  struct timeval tv = {.tv_sec = 1, .tv_usec = 0};
+  setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
   ESP_LOGI(TAG, "UDP receiver listening on port %d", UDP_LISTEN_PORT);
   char rx_buffer[512];
 
   while (true) {
+    if (!wifi.is_connected()) {
+      vTaskDelay(pdMS_TO_TICKS(500));
+      continue;
+    }
+
     struct sockaddr_storage source_addr;
     socklen_t socklen = sizeof(source_addr);
     int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0,
                        (struct sockaddr *)&source_addr, &socklen);
 
     if (len < 0) {
-      ESP_LOGE(TAG, "recvfrom failed: errno %d", errno);
-      vTaskDelay(pdMS_TO_TICKS(1000));
+      if (errno != EAGAIN && errno != EWOULDBLOCK && wifi.is_connected()) {
+        ESP_LOGW(TAG, "recvfrom failed: errno %d", errno);
+      }
+      vTaskDelay(pdMS_TO_TICKS(100));
       continue;
     }
 
@@ -530,7 +534,8 @@ void udp_receiver_task(void *pvParameters) {
           cJSON *blind_s2 = cJSON_GetObjectItemCaseSensitive(json, "blind_s2");
           cJSON *blind_s3 = cJSON_GetObjectItemCaseSensitive(json, "blind_s3");
 
-          bool update_fuzzy = false, update_bs1 = false, update_bs2 = false, update_bs3 = false;
+          bool update_fuzzy = false, update_bs1 = false, update_bs2 = false,
+               update_bs3 = false;
           bool fuzzy_val = false;
           float bs1_rl = 0.0f, bs1_rr = 0.0f;
           int64_t bs1_pl = 0, bs1_pr = 0;

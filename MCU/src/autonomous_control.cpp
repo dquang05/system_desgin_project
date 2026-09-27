@@ -41,6 +41,15 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
       masked_adc[1] = 0;
     }
 
+    bool in_curve = false;
+    if (_current_state == TrackState::MOVING_TO_PICKUP && _is_carrying_package) {
+      int64_t d_pulse_pickup_l = state.encoder_l - _post_pickup_enc_l;
+      int64_t d_pulse_pickup_r = state.encoder_r - _post_pickup_enc_r;
+      in_curve =
+          (d_pulse_pickup_l >= 2700 && (d_pulse_pickup_l - 2700) < 10000) ||
+          (d_pulse_pickup_r >= 2700 && (d_pulse_pickup_r - 2700) < 7000);
+    }
+
     float e2 = _line_tracker.compute_e2(masked_adc, state.line_calib,
                                         state.physical_config);
     _last_e2 = e2;
@@ -48,14 +57,22 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
     switch (_current_state) {
     case TrackState::MOVING_TO_PICKUP: {
       // 1. End of line detection (5 sensors white) OR Line lost recovery
-      if (state.adc_raw[0] < 500 && state.adc_raw[1] < 500 &&
-          state.adc_raw[2] < 500 && state.adc_raw[3] < 500 &&
-          state.adc_raw[4] < 500) {
+      if (state.adc_raw[0] < 2500 && state.adc_raw[1] < 2500 &&
+          state.adc_raw[2] < 2500 && state.adc_raw[3] < 2500 &&
+          state.adc_raw[4] < 2500) {
 
-        if (_has_turned && (state.encoder_l - _post_turn_encoder_l) >= 12000 &&
-            (state.encoder_r - _post_turn_encoder_r) >= 12000) {
+        int64_t post_turn_l = state.encoder_l - _post_turn_encoder_l;
+        int64_t post_turn_r = state.encoder_r - _post_turn_encoder_r;
+        int64_t finish_thresh = state.track_config.finish_stop_pulses > 0
+                                    ? state.track_config.finish_stop_pulses
+                                    : 10000;
+        if (_has_turned && post_turn_l >= finish_thresh &&
+            post_turn_r >= finish_thresh) {
           // Reached the end of the track
           _current_state = TrackState::FINISHED;
+          _last_target_rpm_l = 0.0f;
+          _last_target_rpm_r = 0.0f;
+          break;
         } else {
           // Lost line, perform recovery based on last known error (e2)
           if (e2 > 0.0f) {
@@ -71,9 +88,12 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
         break; // Skip normal PID
       }
 
-      // 1.5. Fallback stop
-      if (!_is_carrying_package && state.encoder_l > 10000 &&
-          state.encoder_r > 10000) {
+      // 1.5. Fallback stop at pickup point
+      int64_t pickup_stop = state.track_config.pickup_stop_pulses > 0
+                                ? state.track_config.pickup_stop_pulses
+                                : 10800;
+      if (!_is_carrying_package && state.encoder_l >= pickup_stop &&
+          state.encoder_r >= pickup_stop) {
         _current_state = TrackState::WAITING_FOR_PACKAGE;
         _last_target_rpm_l = 0.0f;
         _last_target_rpm_r = 0.0f;
@@ -98,8 +118,10 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
 
         if (!weight_valid) {
           _recovery_ticks++;
-          if (_recovery_ticks >= 50) { // 0.5s continuous invalid load
+          if (_recovery_ticks >= 6) { // ~300ms continuous invalid load (filter vibration)
             _current_state = TrackState::FINISHED; // Stop permanently
+            _last_target_rpm_l = 0.0f;
+            _last_target_rpm_r = 0.0f;
             break;
           }
         } else {
@@ -133,20 +155,76 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
         }
       }
 
-      // Use physical config's v_ref (which is updated via UDP 'tune' and saved
-      // to NVS)
+      // Use physical config (updated via UDP 'tune' and saved to NVS)
       RobotPhysicalConfig dyn_config = state.physical_config;
 
-      // Select proper PID parameters based on load (only if NOT in fuzzy mode)
-      if (_is_carrying_package && !state.track_config.fuzzy_mode) {
-        if (_cargo_type == 1) {
-          dyn_config.kp = dyn_config.kp_load1;
-          dyn_config.kd = dyn_config.kd_load1;
-          dyn_config.pid_tau = dyn_config.pid_tau_load1;
-        } else if (_cargo_type == 2) {
-          dyn_config.kp = dyn_config.kp_load2;
-          dyn_config.kd = dyn_config.kd_load2;
-          dyn_config.pid_tau = dyn_config.pid_tau_load2;
+      // Default: Use Set 1 (kp, kd, pid_tau) for all normal segments
+      dyn_config.kp = state.physical_config.kp;
+      dyn_config.kd = state.physical_config.kd;
+      dyn_config.pid_tau = state.physical_config.pid_tau;
+      dyn_config.v_ref = state.physical_config.v_ref;
+
+      if (_is_carrying_package) {
+        int64_t d_pulse_pickup_l = state.encoder_l - _post_pickup_enc_l;
+        int64_t d_pulse_pickup_r = state.encoder_r - _post_pickup_enc_r;
+
+        bool after_curve =
+            !in_curve && (d_pulse_pickup_l >= 2700 || d_pulse_pickup_r >= 2700);
+
+        if (in_curve) {
+          // Inside the R=500mm curve: Use Set 2 for BOTH cargo types, with
+          // v_ref_turn
+          dyn_config.kp = state.physical_config.kp_load1;
+          dyn_config.kd = state.physical_config.kd_load1;
+          dyn_config.pid_tau = state.physical_config.pid_tau_load1;
+          dyn_config.v_ref = state.physical_config.v_ref_turn;
+
+          // Virtual center bias: shift sensor center 4.0mm rightward to hug R=500mm right curve
+          e2 += 4.0f;
+        } else if (after_curve) {
+          // After the R=500mm curve: Use Set 3 (formerly Set 1) to finish
+          dyn_config.kp = state.physical_config.kp_load2;
+          dyn_config.kd = state.physical_config.kd_load2;
+          dyn_config.pid_tau = state.physical_config.pid_tau_load2;
+          dyn_config.v_ref = state.physical_config.v_ref;
+
+          // Deceleration at 80% of finish distance (~9600 pulses post-turn)
+          if (_has_turned) {
+            int64_t post_turn_pulses =
+                ((state.encoder_l - _post_turn_encoder_l) +
+                 (state.encoder_r - _post_turn_encoder_r)) /
+                2;
+            if (post_turn_pulses >= 12500) {
+              dyn_config.v_ref *= 0.20f;
+            } else if (post_turn_pulses >= 11000) {
+              dyn_config.v_ref *= 0.30f;
+            } else if (post_turn_pulses >= 10500) {
+              dyn_config.v_ref *= 0.60f;
+            }
+          }
+        } else {
+          // Before the curve (the 2700-pulse buffer post-pickup): Use Set 1 &
+          // v_ref
+          dyn_config.kp = state.physical_config.kp;
+          dyn_config.kd = state.physical_config.kd;
+          dyn_config.pid_tau = state.physical_config.pid_tau;
+          dyn_config.v_ref = state.physical_config.v_ref;
+        }
+      } else {
+        // Not carrying package: Approach pickup station with Set 1
+        dyn_config.v_ref = state.physical_config.v_ref;
+
+        // Deceleration at 80% of pickup distance (~8640 pulses from start)
+        int64_t avg_pulses = (state.encoder_l + state.encoder_r) / 2;
+        int64_t pickup_decel = state.track_config.pickup_decel_pulses > 0
+                                   ? state.track_config.pickup_decel_pulses
+                                   : 10000;
+        if (avg_pulses >= pickup_decel) {
+          float decel = (state.track_config.decel_ratio > 0.1f &&
+                         state.track_config.decel_ratio < 1.0f)
+                            ? state.track_config.decel_ratio
+                            : 0.65f;
+          dyn_config.v_ref *= decel;
         }
       }
 
@@ -204,6 +282,8 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
         _recovery_ticks = 0;
         _reference_displacement_mm =
             _total_displacement_mm; // Reset odometry for Y-junction filter
+        _post_pickup_enc_l = state.encoder_l;
+        _post_pickup_enc_r = state.encoder_r;
         _line_tracker.reset();
 
         if (state.track_config.fuzzy_mode) {
@@ -262,7 +342,8 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
 
       // Condition to transition: Detect turn / Y-junction on ADC
       // Center sensors detect black line while turning area is entered
-      if (state.adc_raw[1] > 2000 || state.adc_raw[2] > 2000 || state.adc_raw[3] > 2000) {
+      if (state.adc_raw[1] > 2000 || state.adc_raw[2] > 2000 ||
+          state.adc_raw[3] > 2000) {
         if (_cargo_type == 1) {
           _current_state = TrackState::DELIVERING_TYPE_1;
         } else {
@@ -275,10 +356,12 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
     }
 
     case TrackState::DELIVERING_TYPE_1: {
-      // Type 1: Turn Left using Sensor Masking & PID
+      // Type 1: Turn Left using Sensor Masking & PID with Set 1 parameters
       RobotPhysicalConfig dyn_config = state.physical_config;
-      dyn_config.v_ref =
-          state.physical_config.v_ref_turn; // Slower speed for turning
+      dyn_config.v_ref = state.physical_config.v_ref;
+      dyn_config.kp = state.physical_config.kp;
+      dyn_config.kd = state.physical_config.kd;
+      dyn_config.pid_tau = state.physical_config.pid_tau;
 
       _line_tracker.compute_target_rpm(e2, PID_OUTER_DT_S, dyn_config,
                                        _last_target_rpm_l, _last_target_rpm_r);
@@ -296,10 +379,12 @@ MotionOutput AutonomousControl::compute(const StateSnapshot &state, float dt_s,
     }
 
     case TrackState::DELIVERING_TYPE_2: {
-      // Type 2: Turn Right using Sensor Masking & PID
+      // Type 2: Turn Right using Sensor Masking & PID with Set 1 parameters
       RobotPhysicalConfig dyn_config = state.physical_config;
-      dyn_config.v_ref =
-          state.physical_config.v_ref_turn; // Slower speed for turning
+      dyn_config.v_ref = state.physical_config.v_ref;
+      dyn_config.kp = state.physical_config.kp;
+      dyn_config.kd = state.physical_config.kd;
+      dyn_config.pid_tau = state.physical_config.pid_tau;
 
       _line_tracker.compute_target_rpm(e2, PID_OUTER_DT_S, dyn_config,
                                        _last_target_rpm_l, _last_target_rpm_r);
@@ -340,6 +425,8 @@ void AutonomousControl::reset() {
   _last_target_rpm_r = 0.0f;
   _is_carrying_package = false;
   _cargo_type = 0;
+  _post_pickup_enc_l = 0;
+  _post_pickup_enc_r = 0;
   _has_turned = false;
   _post_turn_encoder_l = 0;
   _post_turn_encoder_r = 0;

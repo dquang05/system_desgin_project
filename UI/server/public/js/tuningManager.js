@@ -156,7 +156,7 @@ export class TuningManager {
             if (input) {
                 input.addEventListener('change', () => {
                     const val = parseFloat(input.value);
-                    if (!isNaN(val)) input.value = val.toFixed(3);
+                    if (!isNaN(val)) input.value = val.toFixed(4);
                 });
             }
         });
@@ -235,20 +235,20 @@ export class TuningManager {
                     if (this.inputEls.kiR) this.inputEls.kiR.value = this.currentPid.R[1].toFixed(4);
                     if (this.inputEls.kdR) this.inputEls.kdR.value = this.currentPid.R[2].toFixed(4);
 
-                    if (this.inputEls.kpT && this.currentPid.T.length > 0) this.inputEls.kpT.value = this.currentPid.T[0].toFixed(3);
-                    if (this.inputEls.kdT && this.currentPid.T.length > 1) this.inputEls.kdT.value = this.currentPid.T[1].toFixed(3);
-                    if (this.inputEls.tauT && this.currentPid.T.length > 2) this.inputEls.tauT.value = this.currentPid.T[2].toFixed(3);
+                    if (this.inputEls.kpT && this.currentPid.T.length > 0) this.inputEls.kpT.value = this.currentPid.T[0].toFixed(4);
+                    if (this.inputEls.kdT && this.currentPid.T.length > 1) this.inputEls.kdT.value = this.currentPid.T[1].toFixed(4);
+                    if (this.inputEls.tauT && this.currentPid.T.length > 2) this.inputEls.tauT.value = this.currentPid.T[2].toFixed(4);
 
                     if (this.inputEls.kpT1 && this.currentPid.T1) {
-                        this.inputEls.kpT1.value = this.currentPid.T1[0].toFixed(3);
-                        if (this.currentPid.T1.length > 1) this.inputEls.kdT1.value = this.currentPid.T1[1].toFixed(3);
-                        if (this.inputEls.tauT1 && this.currentPid.T1.length > 2) this.inputEls.tauT1.value = this.currentPid.T1[2].toFixed(3);
+                        this.inputEls.kpT1.value = this.currentPid.T1[0].toFixed(4);
+                        if (this.currentPid.T1.length > 1) this.inputEls.kdT1.value = this.currentPid.T1[1].toFixed(4);
+                        if (this.inputEls.tauT1 && this.currentPid.T1.length > 2) this.inputEls.tauT1.value = this.currentPid.T1[2].toFixed(4);
                     }
 
                     if (this.inputEls.kpT2 && this.currentPid.T2) {
-                        this.inputEls.kpT2.value = this.currentPid.T2[0].toFixed(3);
-                        if (this.currentPid.T2.length > 1) this.inputEls.kdT2.value = this.currentPid.T2[1].toFixed(3);
-                        if (this.inputEls.tauT2 && this.currentPid.T2.length > 2) this.inputEls.tauT2.value = this.currentPid.T2[2].toFixed(3);
+                        this.inputEls.kpT2.value = this.currentPid.T2[0].toFixed(4);
+                        if (this.currentPid.T2.length > 1) this.inputEls.kdT2.value = this.currentPid.T2[1].toFixed(4);
+                        if (this.inputEls.tauT2 && this.currentPid.T2.length > 2) this.inputEls.tauT2.value = this.currentPid.T2[2].toFixed(4);
                     }
 
                     if (this.inputEls.w04 && this.currentPid.W) {
@@ -304,20 +304,20 @@ export class TuningManager {
         this.activeEls.kiR.textContent = this.currentPid.R[1].toFixed(4);
         this.activeEls.kdR.textContent = this.currentPid.R[2].toFixed(4);
         
-        if (this.activeEls.kpT && this.currentPid.T.length > 0) this.activeEls.kpT.textContent = this.currentPid.T[0].toFixed(3);
-        if (this.activeEls.kdT && this.currentPid.T.length > 1) this.activeEls.kdT.textContent = this.currentPid.T[1].toFixed(3);
-        if (this.activeEls.tauT && this.currentPid.T.length > 2) this.activeEls.tauT.textContent = this.currentPid.T[2].toFixed(3);
+        if (this.activeEls.kpT && this.currentPid.T.length > 0) this.activeEls.kpT.textContent = this.currentPid.T[0].toFixed(4);
+        if (this.activeEls.kdT && this.currentPid.T.length > 1) this.activeEls.kdT.textContent = this.currentPid.T[1].toFixed(4);
+        if (this.activeEls.tauT && this.currentPid.T.length > 2) this.activeEls.tauT.textContent = this.currentPid.T[2].toFixed(4);
 
         if (this.activeEls.kpT1 && this.currentPid.T1) {
-            this.activeEls.kpT1.textContent = this.currentPid.T1[0].toFixed(3);
-            if (this.currentPid.T1.length > 1) this.activeEls.kdT1.textContent = this.currentPid.T1[1].toFixed(3);
-            if (this.activeEls.tauT1 && this.currentPid.T1.length > 2) this.activeEls.tauT1.textContent = this.currentPid.T1[2].toFixed(3);
+            this.activeEls.kpT1.textContent = this.currentPid.T1[0].toFixed(4);
+            if (this.currentPid.T1.length > 1) this.activeEls.kdT1.textContent = this.currentPid.T1[1].toFixed(4);
+            if (this.activeEls.tauT1 && this.currentPid.T1.length > 2) this.activeEls.tauT1.textContent = this.currentPid.T1[2].toFixed(4);
         }
 
         if (this.activeEls.kpT2 && this.currentPid.T2) {
-            this.activeEls.kpT2.textContent = this.currentPid.T2[0].toFixed(3);
-            if (this.currentPid.T2.length > 1) this.activeEls.kdT2.textContent = this.currentPid.T2[1].toFixed(3);
-            if (this.activeEls.tauT2 && this.currentPid.T2.length > 2) this.activeEls.tauT2.textContent = this.currentPid.T2[2].toFixed(3);
+            this.activeEls.kpT2.textContent = this.currentPid.T2[0].toFixed(4);
+            if (this.currentPid.T2.length > 1) this.activeEls.kdT2.textContent = this.currentPid.T2[1].toFixed(4);
+            if (this.activeEls.tauT2 && this.currentPid.T2.length > 2) this.activeEls.tauT2.textContent = this.currentPid.T2[2].toFixed(4);
         }
 
         if (this.activeEls.w04 && this.currentPid.W) {
@@ -386,19 +386,19 @@ export class TuningManager {
                 parseFloat(this.inputEls.kdR.value) || 0
             ],
             pid_T: [
-                Math.round((parseFloat(this.inputEls.kpT.value) || 0) * 1000) / 1000,
-                Math.round((parseFloat(this.inputEls.kdT.value) || 0) * 1000) / 1000,
-                Math.round((parseFloat(this.inputEls.tauT.value) || 0) * 1000) / 1000
+                Math.round((parseFloat(this.inputEls.kpT.value) || 0) * 10000) / 10000,
+                Math.round((parseFloat(this.inputEls.kdT.value) || 0) * 10000) / 10000,
+                Math.round((parseFloat(this.inputEls.tauT.value) || 0) * 10000) / 10000
             ],
             pid_T_1: [
-                Math.round((parseFloat(this.inputEls.kpT1?.value) || 0) * 1000) / 1000,
-                Math.round((parseFloat(this.inputEls.kdT1?.value) || 0) * 1000) / 1000,
-                Math.round((parseFloat(this.inputEls.tauT1?.value) || 0) * 1000) / 1000
+                Math.round((parseFloat(this.inputEls.kpT1?.value) || 0) * 10000) / 10000,
+                Math.round((parseFloat(this.inputEls.kdT1?.value) || 0) * 10000) / 10000,
+                Math.round((parseFloat(this.inputEls.tauT1?.value) || 0) * 10000) / 10000
             ],
             pid_T_2: [
-                Math.round((parseFloat(this.inputEls.kpT2?.value) || 0) * 1000) / 1000,
-                Math.round((parseFloat(this.inputEls.kdT2?.value) || 0) * 1000) / 1000,
-                Math.round((parseFloat(this.inputEls.tauT2?.value) || 0) * 1000) / 1000
+                Math.round((parseFloat(this.inputEls.kpT2?.value) || 0) * 10000) / 10000,
+                Math.round((parseFloat(this.inputEls.kdT2?.value) || 0) * 10000) / 10000,
+                Math.round((parseFloat(this.inputEls.tauT2?.value) || 0) * 10000) / 10000
             ],
             sensor_weights: [
                 parseFloat(this.inputEls.w04?.value) || 0,

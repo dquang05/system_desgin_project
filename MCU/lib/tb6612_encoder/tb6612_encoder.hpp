@@ -61,6 +61,20 @@ public:
     esp_err_t set_speed_rpm_openloop(float rpm);
 
     /**
+     * @brief Engages electromagnetic short brake on the motor.
+     * Sets IN1=1, IN2=1 and PWM=100% to short-circuit motor terminals.
+     * @return ESP_OK on success.
+     */
+    esp_err_t short_brake();
+
+    /**
+     * @brief Puts motor in high-impedance coasting state (free rolling).
+     * Sets IN1=0, IN2=0 and PWM=0%.
+     * @return ESP_OK on success.
+     */
+    esp_err_t coast();
+
+    /**
      * @brief Gets the total accumulated pulse count from the encoder.
      * @param out_pulse_count Reference to store the pulse count.
      * @return ESP_OK on success.

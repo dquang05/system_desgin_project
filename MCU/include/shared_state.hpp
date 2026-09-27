@@ -76,6 +76,14 @@ struct TrackStrategyConfig {
 
   float blind_seg3_rpm_l;
   float blind_seg3_rpm_r;
+
+  // Deceleration & Stop thresholds
+  int64_t pickup_stop_pulses;  // Pulses to stop at pickup (e.g., 10000)
+  int64_t pickup_decel_pulses; // Pulses to start decel at pickup (e.g., 8000)
+  int64_t finish_stop_pulses;  // Post-turn pulses to stop at finish (e.g., 12000)
+  int64_t finish_decel_pulses; // Post-turn pulses to start decel at finish (e.g., 9600)
+  float decel_ratio;           // Ratio of v_ref during pickup deceleration (e.g., 0.65f)
+  float finish_decel_ratio;    // Ratio of v_ref during finish deceleration (e.g., 0.40f)
 };
 
 struct SharedRobotState {

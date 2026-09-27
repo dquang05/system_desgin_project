@@ -163,9 +163,11 @@ esp_err_t Tb6612Encoder::set_duty_cycle(float duty_cycle_percent) {
         gpio_set_level(static_cast<gpio_num_t>(_in1_gpio), 0);
         gpio_set_level(static_cast<gpio_num_t>(_in2_gpio), 1);
     } else {
-        // Short Brake (Electromagnetic motor locking)
+        // Short Brake: IN1=1, IN2=1, PWM=100% to fully ground motor terminals
         gpio_set_level(static_cast<gpio_num_t>(_in1_gpio), 1);
         gpio_set_level(static_cast<gpio_num_t>(_in2_gpio), 1);
+        CHECK_RET(mcpwm_comparator_set_compare_value(_cmpr, _pwm_period_ticks));
+        return ESP_OK;
     }
 
     float abs_duty = (duty_cycle_percent < 0.0f) ? -duty_cycle_percent : duty_cycle_percent;
@@ -174,6 +176,22 @@ esp_err_t Tb6612Encoder::set_duty_cycle(float duty_cycle_percent) {
     uint32_t compare_ticks = static_cast<uint32_t>((abs_duty / 100.0f) * _pwm_period_ticks);
     CHECK_RET(mcpwm_comparator_set_compare_value(_cmpr, compare_ticks));
 
+    return ESP_OK;
+}
+
+esp_err_t Tb6612Encoder::short_brake() {
+    if (!_is_initialized) return ESP_ERR_INVALID_STATE;
+    gpio_set_level(static_cast<gpio_num_t>(_in1_gpio), 1);
+    gpio_set_level(static_cast<gpio_num_t>(_in2_gpio), 1);
+    CHECK_RET(mcpwm_comparator_set_compare_value(_cmpr, _pwm_period_ticks));
+    return ESP_OK;
+}
+
+esp_err_t Tb6612Encoder::coast() {
+    if (!_is_initialized) return ESP_ERR_INVALID_STATE;
+    gpio_set_level(static_cast<gpio_num_t>(_in1_gpio), 0);
+    gpio_set_level(static_cast<gpio_num_t>(_in2_gpio), 0);
+    CHECK_RET(mcpwm_comparator_set_compare_value(_cmpr, 0));
     return ESP_OK;
 }
 

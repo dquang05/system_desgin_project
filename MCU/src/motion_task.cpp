@@ -58,6 +58,7 @@ void motion_task_routine(void *pvParameters) {
   motor_right.get_pulse_count(last_pulse_r);
 
   uint32_t loop_counter = 0;
+  uint32_t stop_hold_ticks = 0;
 
   gpio_config_t io_conf = {};
   io_conf.pin_bit_mask = (1ULL << GPIO_NUM_0);
@@ -195,6 +196,7 @@ void motion_task_routine(void *pvParameters) {
       if (current_system_running && !prev_system_running) {
         enc_offset_l = current_pulse_l;
         enc_offset_r = current_pulse_r;
+        stop_hold_ticks = 0;
         motion_controller.reset();
       }
       prev_system_running = current_system_running;
@@ -203,19 +205,21 @@ void motion_task_routine(void *pvParameters) {
       float duty_r = 0.0f;
 
       if (!current_system_running) {
-        // IDLE MODE: Coasting
+        // IDLE MODE: Coasting (free to push/roll by hand)
         pid_left.reset();
         pid_right.reset();
         target_rpm_l = 0.0f;
         target_rpm_r = 0.0f;
         duty_l = 0.0f;
         duty_r = 0.0f;
+        motor_left.coast();
+        motor_right.coast();
       } else {
         // RUNNING MODE
         MotionOutput m_out_running;
 
         if (current_soft_stop_req) {
-          // Soft stop requested by UDP
+          // Soft stop requested by UDP or finished track
           m_out_running.target_rpm_left = 0.0f;
           m_out_running.target_rpm_right = 0.0f;
         } else if (is_test_mode) {
@@ -223,8 +227,6 @@ void motion_task_routine(void *pvParameters) {
           m_out_running.target_rpm_right = test_target_rpm_r_val;
           current_e2 = 0.0f;
         } else {
-          // We already computed m_out earlier in the loop. 
-          // However, to maintain the logic without calling compute twice:
           m_out_running.target_rpm_left = target_rpm_l;
           m_out_running.target_rpm_right = target_rpm_r;
         }
@@ -232,30 +234,45 @@ void motion_task_routine(void *pvParameters) {
         target_rpm_l = m_out_running.target_rpm_left;
         target_rpm_r = m_out_running.target_rpm_right;
 
-        // Check if we have successfully soft-stopped (ONLY if soft stop was
-        // requested)
+        // Check if we have successfully soft-stopped (Hold hard brake for 3s before coasting)
         if (current_soft_stop_req && target_rpm_l == 0.0f &&
             target_rpm_r == 0.0f) {
-          if (std::abs(rpm_l) < 5.0f && std::abs(rpm_r) < 5.0f) {
-            // Fully stopped, go to IDLE
-            portENTER_CRITICAL(&state->spinlock);
-            state->system_running = false;
-            state->soft_stop_request = false;
-            current_system_running = false;
-            portEXIT_CRITICAL(&state->spinlock);
+          if (std::abs(rpm_l) < 2.0f && std::abs(rpm_r) < 2.0f) {
+            stop_hold_ticks++;
+            // Hold active short-brake for 3 seconds (300 ticks @ 100Hz) before releasing to coast
+            if (stop_hold_ticks >= 300) {
+              // Fully stopped, transition to IDLE
+              portENTER_CRITICAL(&state->spinlock);
+              state->system_running = false;
+              state->soft_stop_request = false;
+              current_system_running = false;
+              portEXIT_CRITICAL(&state->spinlock);
+              stop_hold_ticks = 0;
+            }
+          } else {
+            stop_hold_ticks = 0;
           }
+        } else {
+          stop_hold_ticks = 0;
         }
-        /// \note Keep PID tracking active even when target = 0 so PID can generate positive/negative duty to brake the vehicle,
-        /// utilizing the Slew Rate Limiter and Deadband features of VelocityPID.
-        pid_left.set_target_velocity(target_rpm_l);
-        pid_right.set_target_velocity(target_rpm_r);
-        duty_l = pid_left.compute(rpm_l, dt_s);
-        duty_r = pid_right.compute(rpm_r, dt_s);
-      }
-      // #endif
 
-      motor_left.set_duty_cycle(duty_l);
-      motor_right.set_duty_cycle(duty_r);
+        // Active braking: if commanded target is zero, engage hardware short brake
+        if (target_rpm_l == 0.0f && target_rpm_r == 0.0f && !is_test_mode) {
+          pid_left.reset();
+          pid_right.reset();
+          duty_l = 0.0f;
+          duty_r = 0.0f;
+          motor_left.short_brake();
+          motor_right.short_brake();
+        } else {
+          pid_left.set_target_velocity(target_rpm_l);
+          pid_right.set_target_velocity(target_rpm_r);
+          duty_l = pid_left.compute(rpm_l, dt_s);
+          duty_r = pid_right.compute(rpm_r, dt_s);
+          motor_left.set_duty_cycle(duty_l);
+          motor_right.set_duty_cycle(duty_r);
+        }
+      }
 
       // Atomically update state for the Telemetry Task
       portENTER_CRITICAL(&state->spinlock);
